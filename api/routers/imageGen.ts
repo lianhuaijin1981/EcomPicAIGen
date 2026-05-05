@@ -161,7 +161,7 @@ export const imageGenRouter = createRouter({
       const db = getDb();
 
       // 1. 算法路由匹配
-      const matchedAlgos = await matchAlgorithms(
+      let matchedAlgos = await matchAlgorithms(
         {
           category: input.config.category,
           sceneType: input.config.sceneType,
@@ -170,6 +170,32 @@ export const imageGenRouter = createRouter({
         },
         input.algorithmMode
       );
+
+      // 如果算法库为空，回退到内置默认算法（确保首次使用也能工作）
+      if (matchedAlgos.length === 0) {
+        matchedAlgos = [{
+          algo: {
+            id: 0,
+            name: "Flux通用文生图",
+            type: "general" as const,
+            description: "通用生图回退算法",
+            categories: ["*"],
+            scenes: ["*"],
+            styles: ["*"],
+            qualityTier: "standard" as const,
+            apiEndpoint: "",
+            apiKeyRef: "",
+            priority: 50,
+            enabled: true,
+            successRate: 85,
+            avgScore: 88,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          },
+          score: 70,
+          reasons: ["回退默认"],
+        }];
+      }
 
       const algorithmRoute = matchedAlgos.map((m) => ({
         id: m.algo.id,

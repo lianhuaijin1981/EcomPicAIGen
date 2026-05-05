@@ -5,7 +5,7 @@ import {
   Wand2, CheckCircle, Download,
   ShoppingBag, ChevronRight, Trash2, RefreshCw,
   Smartphone, Shirt, Home, Sparkles, Zap,
-  Package, Eye, MousePointer
+  Package, Eye, MousePointer, AlertTriangle
 } from 'lucide-react';
 
 // ============== 类型定义 ==============
@@ -92,9 +92,11 @@ export default function WorkflowSection() {
   const [results, setResults] = useState<any[]>([]);
   const [selectedResult, setSelectedResult] = useState<number | null>(null);
   const [taskComplete, setTaskComplete] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // tRPC mutations
+  // tRPC queries & mutations
+  const algoListQuery = trpc.algorithm.list.useQuery();
   const createTask = trpc.imageGen.createTask.useMutation();
   const generate = trpc.imageGen.generate.useMutation();
   const regenerateOne = trpc.imageGen.regenerateOne.useMutation();
@@ -154,6 +156,7 @@ export default function WorkflowSection() {
   // ===== 开始生成：先创建任务，再执行生成 =====
   const startGenerate = async () => {
     if (files.length === 0) return;
+    setError(null);
 
     try {
       // Step 1: 创建任务（含算法路由选择）
@@ -188,9 +191,10 @@ export default function WorkflowSection() {
       setProgress(100);
       setResults(genResult.results);
       setStep(4);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Generate failed:', err);
-      alert('生成失败，请重试');
+      const msg = err?.message || err?.shape?.message || '未知错误';
+      setError(msg);
     }
   };
 
@@ -542,6 +546,33 @@ export default function WorkflowSection() {
                 后端将把这些参数转化为英文 Prompt，调用 AI 生图模型
               </p>
             </div>
+
+            {/* 算法库状态提示 */}
+            {algoListQuery.data && algoListQuery.data.length === 0 && (
+              <div className="mt-4 p-4 bg-[#fff8e1] border border-[#f59e0b] rounded">
+                <p className="text-sm text-[#92400e] mb-1">
+                  <AlertTriangle size={14} className="inline mr-1" />
+                  算法库为空，首次使用需要先初始化
+                </p>
+                <p className="text-xs text-[#92400e]">
+                  系统将使用回退默认算法继续生成，但建议初始化算法库以获得最佳效果。
+                </p>
+              </div>
+            )}
+
+            {/* 错误提示 */}
+            {error && (
+              <div className="mt-4 p-4 bg-[#fef2f2] border border-[#ef4444] rounded">
+                <p className="text-sm text-[#dc2626] mb-1">
+                  <AlertTriangle size={14} className="inline mr-1" />
+                  生成失败
+                </p>
+                <p className="text-xs text-[#dc2626]">{error}</p>
+                <p className="text-xs text-[#666C74] mt-1">
+                  请检查：1) npm run db:push 是否执行 2) 后端服务是否运行
+                </p>
+              </div>
+            )}
 
             <div className="mt-6 flex items-center justify-between">
               <button
