@@ -87,31 +87,54 @@ function buildPrompt(
 
 // =================== 质量评分算法（按算法类型差异化权重） ===================
 
-function generateScore(seed: string, algoType: string) {
+// 确定性评分算法：基于文件特征的稳定评分（同图同分）
+function generateScore(seed: string, algoType: string, fileSize: number = 0) {
+  // 使用稳定的字符串哈希（确定性）
   let hash = 0;
   for (let i = 0; i < seed.length; i++) {
     hash = ((hash << 5) - hash + seed.charCodeAt(i)) | 0;
   }
-  const base = Math.abs(hash) % 15;
-
-  // 不同算法类型在不同维度有天然优势/劣势
-  const typeModifiers: Record<string, { decision: number; info: number; trust: number; visual: number }> = {
-    general: { decision: 0, info: 0, trust: -2, visual: +1 },
+  const baseHash = Math.abs(hash);
+  
+  // 算法类型加权系数
+  const typeWeights: Record<string, { decision: number; info: number; trust: number; visual: number }> = {
+    general:        { decision: 0, info: 0, trust: -2, visual: +1 },
     product_fidelity: { decision: +2, info: +1, trust: +3, visual: +1 },
-    controlnet: { decision: +3, info: +2, trust: +1, visual: 0 },
-    lora: { decision: +1, info: +1, trust: +2, visual: +2 },
-    upscaler: { decision: 0, info: 0, trust: +1, visual: +3 },
-    compliance: { decision: +1, info: +1, trust: +2, visual: -1 },
+    controlnet:     { decision: +3, info: +2, trust: +1, visual: 0 },
+    lora:           { decision: +1, info: +1, trust: +2, visual: +2 },
+    upscaler:       { decision: 0, info: 0, trust: +1, visual: +3 },
+    compliance:     { decision: +1, info: +1, trust: +2, visual: -1 },
   };
+  const mod = typeWeights[algoType] || { decision: 0, info: 0, trust: 0, visual: 0 };
 
-  const mod = typeModifiers[algoType] || { decision: 0, info: 0, trust: 0, visual: 0 };
+  // 使用 baseHash 的各位数字分配分数，确保有区分度（60-99分范围）
+  const digits = baseHash.toString().padStart(10, '0');
+  
+  // 决策引导力 (20-30): 产品主体突出程度
+  let decision = 20 + (parseInt(digits[0] + digits[1], 10) % 11) + mod.decision;
+  
+  // 信息传递效率 (15-25): 构图与层级清晰度
+  let info = 15 + (parseInt(digits[2] + digits[3], 10) % 11) + mod.info;
+  
+  // 商品真实信任度 (15-25): 色彩/材质/光影真实感
+  let trust = 15 + (parseInt(digits[4] + digits[5], 10) % 11) + mod.trust;
+  
+  // 视觉专业质感 (10-20): 清晰度/配色/版式
+  let visual = 10 + (parseInt(digits[6] + digits[7], 10) % 11) + mod.visual;
+  
+  // 文件大小加成（模拟：大文件通常更清晰）
+  const sizeBonus = fileSize > 500000 ? 2 : fileSize > 100000 ? 1 : 0;
+  trust += sizeBonus;
+  visual += sizeBonus;
 
-  const decision = Math.min(30, 26 + (base % 4) + mod.decision);
-  const info = Math.min(25, 22 + (base % 3) + mod.info);
-  const trust = Math.min(25, 23 + (base % 2) + mod.trust);
-  const visual = Math.min(20, 18 + (base % 3) + mod.visual);
+  // 封顶
+  decision = Math.min(30, Math.max(20, decision));
+  info = Math.min(25, Math.max(15, info));
+  trust = Math.min(25, Math.max(15, trust));
+  visual = Math.min(20, Math.max(10, visual));
+  
   const total = decision + info + trust + visual;
-
+  
   return {
     decision,
     info,
@@ -307,6 +330,8 @@ export const imageGenRouter = createRouter({
       // 获取算法路由
       const route = (task.algorithmRoute || []) as Array<{ id: number; name: string; type: string; score: number }>;
 
+      const sourceImages = (task.sourceImages || []) as Array<{ name: string; preview: string; size: number }>;
+
       // 获取结果记录
       const results = await db
         .select()
@@ -320,6 +345,10 @@ export const imageGenRouter = createRouter({
       // 逐个SKU生成
       for (let i = 0; i < results.length; i++) {
         const r = results[i];
+        
+        // 查找对应源文件的大小
+        const sourceFile = sourceImages.find((f: any) => f.name === r.skuName);
+        const fileSize = sourceFile?.size || 0;
 
         // 获取该SKU使用的算法
         let algoId = r.algorithmId || 0;
@@ -353,9 +382,9 @@ export const imageGenRouter = createRouter({
           algoName
         );
 
-        // 生成评分（按算法类型差异化）
+        // 生成评分（按算法类型差异化，传入真实文件大小）
         const seed = `${r.skuName}-${config.category}-${algoType}-${r.retryCount}`;
-        const scores = generateScore(seed, algoType);
+        const scores = generateScore(seed, algoType, fileSize);
 
         // 分配预设图片（按品类+场景选择正确图片池）
         const pool = getPresetImages(config.category || "3c", config.sceneType || "white");
@@ -372,7 +401,7 @@ export const imageGenRouter = createRouter({
           // 模拟其他算法的生成结果
           for (let j = 1; j < route.length; j++) {
             const altSeed = `${r.skuName}-${config.category}-${route[j].type}-${Date.now()}`;
-            const altScores = generateScore(altSeed, route[j].type);
+            const altScores = generateScore(altSeed, route[j].type, fileSize);
             if (altScores.total > bestScore) {
               bestScore = altScores.total;
               const altPool = getPresetImages(config.category || "3c", config.sceneType || "white");
@@ -496,7 +525,7 @@ export const imageGenRouter = createRouter({
       const algoName = primaryAlgo?.algo.name || "通用算法";
 
       const seed = `${current.skuName}-${config.category}-${algoType}-${Date.now()}`;
-      const scores = generateScore(seed, algoType);
+      const scores = generateScore(seed, algoType, 0);
 
       const pool = getPresetImages(config.category || "3c", config.sceneType || "white");
       const imgIndex = (input.resultId + newRetryCount + (primaryAlgo?.algo.id || 0)) % pool.length;

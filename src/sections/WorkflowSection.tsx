@@ -616,6 +616,16 @@ export default function WorkflowSection() {
                 )}
               </div>
 
+              {/* 当前处理SKU */}
+              <div className="mb-4">
+                <p className="text-sm text-[#666C74]">
+                  当前处理: <span className="font-medium text-[#131415]">
+                    {files[Math.min(Math.floor((progress / 100) * files.length), files.length - 1)]?.name || files[0]?.name}
+                  </span>
+                  <span className="ml-2 text-xs">({files.length} SKU 队列)</span>
+                </p>
+              </div>
+
               <div className="mb-6">
                 <div className="h-3 bg-[#E7E9E6] rounded-full overflow-hidden">
                   <div
@@ -636,7 +646,7 @@ export default function WorkflowSection() {
                       <div className={`aspect-square rounded border-2 overflow-hidden mb-1 ${
                         done ? 'border-[#22c55e]' : active ? 'border-[#FF003C]' : 'border-[#DDDDDD]'
                       }`}>
-                        <img src={f.preview} alt="" className="w-full h-full object-cover opacity-50" />
+                        <img src={f.preview} alt={f.name} className="w-full h-full object-cover" style={{ opacity: done ? 0.7 : active ? 0.85 : 0.4 }} />
                       </div>
                       <div className="flex items-center justify-center gap-1">
                         {done ? (
@@ -644,7 +654,7 @@ export default function WorkflowSection() {
                         ) : active ? (
                           <RefreshCw size={10} className="text-[#FF003C] animate-spin" />
                         ) : null}
-                        <span className="text-xs text-[#666C74] truncate">{f.name.slice(0, 4)}</span>
+                        <span className="text-[10px] text-[#666C74] truncate" title={f.name}>{f.name.slice(0, 6)}</span>
                       </div>
                     </div>
                   );
@@ -695,14 +705,22 @@ export default function WorkflowSection() {
                   } ${r.status === 'FAIL' ? 'ring-2 ring-[#ef4444]/30' : ''}`}
                   onClick={() => setSelectedResult(selectedResult === r.id ? null : r.id)}
                 >
-                  <div className="aspect-square overflow-hidden">
-                    {r.generatedImage ? (
-                      <img src={r.generatedImage} alt={r.skuName} className="w-full h-full object-cover" />
-                    ) : (
-                      <div className="w-full h-full bg-[#E7E9E6] flex items-center justify-center">
-                        <RefreshCw size={20} className="text-[#666C74] animate-spin" />
-                      </div>
-                    )}
+                  {/* 原图 + 生成图 对比 */}
+                  <div className="grid grid-cols-2 aspect-[2/1]">
+                    <div className="relative overflow-hidden border-r border-[#DDDDDD]">
+                      <img src={r.sourceImage || '/images/products/01_phone.jpg'} alt={`${r.skuName} 原图`} className="w-full h-full object-cover" />
+                      <span className="absolute top-1 left-1 text-[9px] px-1.5 py-0.5 bg-[#131415]/70 text-white rounded">原图</span>
+                    </div>
+                    <div className="relative overflow-hidden">
+                      {r.generatedImage ? (
+                        <img src={r.generatedImage} alt={`${r.skuName} 生成`} className="w-full h-full object-cover" />
+                      ) : (
+                        <div className="w-full h-full bg-[#E7E9E6] flex items-center justify-center">
+                          <RefreshCw size={20} className="text-[#666C74] animate-spin" />
+                        </div>
+                      )}
+                      <span className="absolute top-1 left-1 text-[9px] px-1.5 py-0.5 bg-[#FF003C]/70 text-white rounded">生成</span>
+                    </div>
                   </div>
                   <div className="p-3">
                     <div className="flex items-center justify-between mb-2">
@@ -768,12 +786,23 @@ export default function WorkflowSection() {
               return (
                 <div className="bg-white rounded-lg border border-[#DDDDDD] p-6 mb-6">
                   <div className="flex flex-col md:flex-row gap-6">
-                    <div className="w-full md:w-64 aspect-square rounded overflow-hidden border border-[#DDDDDD]">
-                      {r.generatedImage ? (
-                        <img src={r.generatedImage} alt={r.skuName} className="w-full h-full object-cover" />
-                      ) : (
-                        <div className="w-full h-full bg-[#E7E9E6] flex items-center justify-center text-[#666C74]">生成中...</div>
-                      )}
+                    {/* 原图 */}
+                    <div className="w-full md:w-48">
+                      <p className="text-xs text-[#666C74] mb-1">用户上传原图</p>
+                      <div className="aspect-square rounded overflow-hidden border border-[#DDDDDD]">
+                        <img src={r.sourceImage || '/images/products/01_phone.jpg'} alt={`${r.skuName} 原图`} className="w-full h-full object-cover" />
+                      </div>
+                    </div>
+                    {/* 生成图 */}
+                    <div className="w-full md:w-48">
+                      <p className="text-xs text-[#666C74] mb-1">AI生成结果</p>
+                      <div className="aspect-square rounded overflow-hidden border border-[#DDDDDD]">
+                        {r.generatedImage ? (
+                          <img src={r.generatedImage} alt={r.skuName} className="w-full h-full object-cover" />
+                        ) : (
+                          <div className="w-full h-full bg-[#E7E9E6] flex items-center justify-center text-[#666C74]">生成中...</div>
+                        )}
+                      </div>
                     </div>
                     <div className="flex-1">
                       <h4 className="text-lg font-bold text-[#131415] mb-2">{r.skuName} - 详细评分</h4>
@@ -874,11 +903,17 @@ export default function WorkflowSection() {
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
                 {results.filter((r: any) => r.status === 'PASS').slice(0, 4).map((r: any) => (
                   <div key={r.id} className="rounded overflow-hidden border border-[#DDDDDD]">
-                    <div className="aspect-square">
-                      <img src={r.generatedImage} alt={r.skuName} className="w-full h-full object-cover" />
+                    <div className="grid grid-cols-2 aspect-[2/1]">
+                      <div className="border-r border-[#DDDDDD]">
+                        <img src={r.sourceImage || '/images/products/01_phone.jpg'} alt={`${r.skuName} 原图`} className="w-full h-full object-cover" />
+                      </div>
+                      <div>
+                        <img src={r.generatedImage} alt={r.skuName} className="w-full h-full object-cover" />
+                      </div>
                     </div>
                     <div className="p-2 text-center">
                       <span className="text-xs text-[#666C74]">{r.skuName}</span>
+                      <span className="text-xs text-[#22c55e] ml-1">{r.totalScore}分</span>
                     </div>
                   </div>
                 ))}
