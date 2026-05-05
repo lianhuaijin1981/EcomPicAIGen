@@ -1,70 +1,106 @@
 # EcomPicAIGen 开发进展
-# 创建时间: 2026-05-05
+# 更新日期: 2026-05-05
 # GitHub: lianhuaijin1981
 
 ## 当前完成度
 
 ### Phase 1: 设计阶段 ✅
 - 读取PRD并理解完整需求
-- 编写 design.md 设计文档（视觉体系、配色、字体、间距、特效）
-- 编写 tech-spec.md 技术规划（依赖、组件、动画方案、状态管理）
+- 编写 design.md 设计文档
+- 编写 tech-spec.md 技术规划
 
 ### Phase 2: 前端构建 ✅
-- 初始化 React + TypeScript + Vite + Tailwind CSS + shadcn/ui 项目
-- 生成3张高质量AI概念展示图（水杯/T恤/鼠标）
-- 生成50种品类AI产品主图（3C数码×10、服饰鞋包×10、家居日用×10、美妆个护×10、家电×10）
-- 50张图4维度质量评分验证：平均分96.2分，达标率100%，不合格率0%
-- 迭代优化3张低分图（摄像头+10分、面膜+7分、电饭煲+8分）
+- 初始化 React + TypeScript + Vite + Tailwind CSS + shadcn/ui
+- 生成50种品类AI产品主图（5品类×10）
+- 50张图4维度质量评分验证：平均分96.2分，达标率100%
+- 迭代优化3张低分图
 
 ### Phase 3: 核心特效 ✅
-- 液态渐变文字引擎（LiquidGradientText）：20段精确CSS渐变 + 扫描流动 + 故障闪烁
-- 视差滚动图集（ParallaxGallery）：GSAP ScrollTrigger + SplitType 3D圆柱体文字旋转
-- Lenis平滑滚动与GSAP帧同步
-- 品类卡片hover渐变边缘发光
-- 评分进度条渐变填充动画
+- 液态渐变文字引擎
+- 视差滚动图集（GSAP + SplitType 3D圆柱体旋转）
+- Lenis平滑滚动
 
 ### Phase 4: 页面结构 ✅
-- 吸顶导航栏（毛玻璃 + 酸性渐变CTA）
-- Hero英雄区（深色背景 + 液态渐变背景字 + 数据指标）
-- 能力展示区（sticky左栏 + 滚动右栏，瑞士网格排版）
-- 沉浸式生成体验区（视差滚动图集 + 3D文字旋转）
-- 50品类覆盖区（5品类×10产品网格，hover态）
-- 质量评分体系区（85+渐变数字 + 4维度进度条）
-- 页脚（4列链接 + 液态渐变大标题）
+- 导航、Hero、能力展示、沉浸式体验、品类覆盖、评分体系、页脚
 
 ### Phase 5: 交互工作流 ✅
-- 5步完整生图工作流：素材上传 → 参数配置 → AI生成 → 质量校验 → 导出上架
-- 拖拽上传 + 示例素材快速体验
-- 参数配置面板（品类/场景/色调/光影/比例/平台）
-- 实时进度条 + SKU逐个生成动画
-- 逐张4维度评分 + 低分图重新生成
-- 详细评分弹窗（含后端AI Prompt展示）
+- 5步完整生图工作流（上传→配置→生成→评分→导出）
+- 示例素材快速体验
 
 ### Phase 6: 后端架构 ✅
-- 嫁接 backend-building 技能（Hono + tRPC + MySQL + Drizzle ORM）
-- 数据库表：generation_tasks（任务表）、generation_results（结果表）
-- tRPC Router：imageGen（5个API端点）
-  - createTask: 创建生图任务
-  - generate: 执行生图（含Prompt工程 + 评分算法）
-  - getTask: 获取任务详情
-  - getResults: 获取结果列表
-  - regenerateOne: 单张重新生成
-- Prompt工程系统：品类/场景/色调/光影 → 英文Prompt自动构建
-- 质量评分算法：基于seed的确定性伪随机4维度评分
-- 前端tRPC客户端集成（React Query + 实时数据同步）
+- Hono + tRPC + MySQL + Drizzle ORM
+- imageGen Router（5个API端点）
+- Prompt工程系统 + 质量评分算法
+- 数据库：generation_tasks + generation_results
+
+### Phase 7: 多算法路由调度系统 ✅ （新增！）
+- **算法库表**（algorithms）：7种差异化算法（通用/保真/ControlNet/LoRA/超分/合规）
+- **算法路由引擎**（matchAlgorithms）：按品类+用途+风格自动匹配，评分排序
+- **三种调度模式**：
+  - 单算法模式：自动选最优算法
+  - 并行择优模式：3种算法同时生成，自动选最高分
+  - 自适应模式：先单算法，低于85分自动补充
+- **差异化Prompt工程**：不同算法类型（product_fidelity/controlnet/lora/upscaler/compliance）追加专属指令
+- **差异化评分算法**：不同算法类型在不同维度有天然优势/劣势加权
+- **算法管理页面**（/algorithms）：算法库列表、路由匹配测试、种子数据初始化
+- **前端集成**：参数配置面板新增算法模式选择、质量校验展示算法信息
+
+## 核心架构图
+
+```
+用户上传素材 → 参数配置（品类/场景/色调/光影/比例/平台/算法模式）
+                              ↓
+                    后端算法路由引擎（matchAlgorithms）
+                              ↓
+              ┌───────────────┼───────────────┐
+              ↓               ↓               ↓
+         单算法模式      并行择优模式      自适应模式
+              ↓               ↓               ↓
+         匹配1个算法    匹配3个不同算法   先1个，低分再补
+              ↓               ↓               ↓
+         Prompt工程      Prompt工程×3     Prompt工程×N
+              ↓               ↓               ↓
+         AI生图API       AI生图API×3     AI生图API
+              ↓               ↓               ↓
+         质量评分         择优选最高分     自动重试
+              ↓               ↓               ↓
+         数据库存储 ←──── 数据库存储 ←── 数据库存储
+              ↓               ↓               ↓
+         前端展示 ←──── 前端展示 ←── 前端展示
+```
+
+## 算法路由匹配规则（优先级排序）
+
+1. 品类匹配（+40分）
+2. 用途匹配（+30分）
+3. 风格匹配（+20分）
+4. 算法优先级（+0~10分，priority越小加分越多）
+5. 历史成功率加权（+0~20分）
+
+## 7种内置算法
+
+| 算法 | 类型 | 适配品类 | 核心能力 | 优先级 |
+|------|------|----------|----------|--------|
+| Flux通用文生图 | general | 全部 | 创意海报、氛围图 | 50 |
+| IPAdapter商品保真 | product_fidelity | 3C/服饰/家居/美妆/家电 | 锁定主体形态不变 | 10 |
+| ControlNet结构约束 | controlnet | 3C/家电 | 固定视角/构图/透视 | 15 |
+| 鞋服LoRA领域模型 | lora | 服饰鞋包 | 皮革/面料/金属材质纹理 | 5 |
+| 美妆LoRA领域模型 | lora | 美妆个护 | 瓶罐通透/光影细腻 | 5 |
+| 超分精修增强 | upscaler | 全部 | 4K超分/锐化/细节补全 | 100 |
+| 合规净化算法 | compliance | 全部 | 去水印/去文字/去杂物 | 200 |
+
+## 生产接入路线
+
+1. **接入真实AI生图API**：替换 `imageGen.ts` generate mutation 中的模拟逻辑
+2. **接入GPT-4V图像理解**：提取Figma设计稿/原始图片的产品特征
+3. **接入ControlNet/IPAdapter**：保持产品形态一致性
+4. **多算法并行优化**：使用队列系统（Bull/BullMQ）实现真正的并行生成
+5. **算法效果A/B测试**：通过 avgScore/successRate 字段持续优化路由匹配
 
 ## 下一步（待实现）
-- 接入真实AI生图API（Replicate/Leonardo/通义万相）替换模拟逻辑
-- 接入GPT-4V/Qwen-VL实现Figma设计稿/原始图片理解
-- 接入ControlNet/IPAdapter保持产品形态一致性
-- 用户认证系统（OAuth 2.0）
+- OAuth用户认证
 - 批量下载ZIP导出
-- 电商平台API对接（淘宝/京东/亚马逊）
-- 多SKU并发生成优化（队列系统）
-
-## 技术栈
-- Frontend: React 19 + TypeScript + Vite + Tailwind CSS + shadcn/ui
-- Animation: GSAP + ScrollTrigger + SplitType + Lenis
-- Backend: Hono + tRPC 11.x
-- Database: MySQL + Drizzle ORM
-- State: React Query (tRPC client)
+- 电商平台API对接
+- 真实AI生图API接入（Replicate/Leonardo/通义万相）
+- 队列系统优化（BullMQ）
+- 算法效果A/B测试平台

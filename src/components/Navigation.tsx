@@ -1,6 +1,12 @@
+import { Link } from 'react-router';
 import GradientButton from './GradientButton';
 
-const navItems = ['生成', '定价', '案例', 'API'];
+const navItems = [
+  { label: '生成', href: '/#generator' },
+  { label: '定价', href: '/#pricing' },
+  { label: '案例', href: '/#gallery' },
+  { label: '算法管理', href: '/algorithms' },
+];
 
 export default function Navigation() {
   return (
@@ -14,13 +20,13 @@ export default function Navigation() {
         {/* Nav Links */}
         <div className="hidden md:flex items-center gap-8">
           {navItems.map((item) => (
-            <a
-              key={item}
-              href={`#${item}`}
+            <Link
+              key={item.label}
+              to={item.href}
               className="text-sm font-medium text-[#666C74] hover:text-[#131415] transition-colors duration-200"
             >
-              {item}
-            </a>
+              {item.label}
+            </Link>
           ))}
         </div>
 

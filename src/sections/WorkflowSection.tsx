@@ -23,6 +23,7 @@ interface GenConfig {
   lightMode: string;
   ratio: string;
   platform: string;
+  algorithmMode: 'single' | 'parallel' | 'adaptive';
 }
 
 // ============== 示例素材 ==============
@@ -84,6 +85,7 @@ export default function WorkflowSection() {
     lightMode: 'soft',
     ratio: '1:1',
     platform: 'taobao',
+    algorithmMode: 'single',
   });
   const [progress, setProgress] = useState(0);
   const [taskId, setTaskId] = useState<number | null>(null);
@@ -154,9 +156,10 @@ export default function WorkflowSection() {
     if (files.length === 0) return;
 
     try {
-      // Step 1: 创建任务
+      // Step 1: 创建任务（含算法路由选择）
       const task = await createTask.mutateAsync({
         config,
+        algorithmMode: config.algorithmMode,
         files: files.map(f => ({ name: f.name, preview: f.preview, size: f.size })),
       });
 
@@ -489,6 +492,35 @@ export default function WorkflowSection() {
               </div>
             </div>
 
+            {/* 算法模式 */}
+            <div className="mt-6">
+              <label className="flex items-center gap-2 text-sm font-semibold text-[#131415] mb-3">
+                <Wand2 size={16} /> 算法调度模式
+              </label>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                {[
+                  { id: 'single', name: '单算法模式', desc: '自动匹配最优算法，最快生成', color: 'bg-blue-50' },
+                  { id: 'parallel', name: '并行择优模式', desc: '3种算法同时生成，自动选最高分', color: 'bg-purple-50' },
+                  { id: 'adaptive', name: '自适应模式', desc: '先单算法生成，低于85分自动补充', color: 'bg-orange-50' },
+                ].map(m => (
+                  <button
+                    key={m.id}
+                    onClick={() => setConfig(prev => ({ ...prev, algorithmMode: m.id as any }))}
+                    className={`p-4 rounded-lg border text-left transition-all ${
+                      config.algorithmMode === m.id
+                        ? 'border-[#FF003C] bg-[#FFF0F3]'
+                        : 'border-[#DDDDDD] hover:border-[#999]'
+                    }`}
+                  >
+                    <div className={`text-sm font-bold mb-1 ${config.algorithmMode === m.id ? 'text-[#FF003C]' : 'text-[#131415]'}`}>
+                      {m.name}
+                    </div>
+                    <div className="text-xs text-[#666C74]">{m.desc}</div>
+                  </button>
+                ))}
+              </div>
+            </div>
+
             {/* 配置预览 */}
             <div className="mt-8 p-4 bg-[#E7E9E6] rounded">
               <h4 className="text-sm font-semibold text-[#131415] mb-2">当前配置（将被转化为 AI Prompt）</h4>
@@ -546,7 +578,7 @@ export default function WorkflowSection() {
                   后端正在执行 AI 生成
                 </h3>
                 <p className="text-sm text-[#666C74]">
-                  数据流：Prompt 工程 → 调用 AI 模型 → 结果存储数据库
+                  数据流：算法路由匹配 → Prompt 工程 → 调用 AI 模型 → 结果存储数据库
                 </p>
                 {taskId && (
                   <p className="text-xs text-[#666C74] mt-1">任务ID: {taskId}</p>
@@ -652,6 +684,14 @@ export default function WorkflowSection() {
                         {r.totalScore || 0}
                       </span>
                     </div>
+                    {/* 算法标签 */}
+                    {r.algorithmName && (
+                      <div className="mb-2">
+                        <span className="text-[10px] px-1.5 py-0.5 bg-[#E7E9E6] rounded text-[#666C74]">
+                          {r.algorithmName}
+                        </span>
+                      </div>
+                    )}
                     <div className="space-y-1">
                       {[
                         { label: '决策', val: r.decisionScore || 0, max: 30 },

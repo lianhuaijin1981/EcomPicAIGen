@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { Routes, Route } from 'react-router';
 import Lenis from 'lenis';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
@@ -11,8 +12,22 @@ import CapabilitiesSection from '@/sections/CapabilitiesSection';
 import VisualShowcaseSection from '@/sections/VisualShowcaseSection';
 import CoverageSection from '@/sections/CoverageSection';
 import ScoringSection from '@/sections/ScoringSection';
+import AlgorithmManagerSection from '@/sections/AlgorithmManagerSection';
 
 gsap.registerPlugin(ScrollTrigger);
+
+function HomePage() {
+  return (
+    <>
+      <HeroSection />
+      <WorkflowSection />
+      <CapabilitiesSection />
+      <VisualShowcaseSection />
+      <CoverageSection />
+      <ScoringSection />
+    </>
+  );
+}
 
 function App() {
   useEffect(() => {
@@ -39,12 +54,10 @@ function App() {
     <div className="font-body">
       <Navigation />
       <main>
-        <HeroSection />
-        <WorkflowSection />
-        <CapabilitiesSection />
-        <VisualShowcaseSection />
-        <CoverageSection />
-        <ScoringSection />
+        <Routes>
+          <Route path="/" element={<HomePage />} />
+          <Route path="/algorithms" element={<AlgorithmManagerSection />} />
+        </Routes>
       </main>
       <Footer />
     </div>
