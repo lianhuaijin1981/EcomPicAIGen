@@ -1,0 +1,70 @@
+# EcomPicAIGen 开发进展
+# 创建时间: 2026-05-05
+# GitHub: lianhuaijin1981
+
+## 当前完成度
+
+### Phase 1: 设计阶段 ✅
+- 读取PRD并理解完整需求
+- 编写 design.md 设计文档（视觉体系、配色、字体、间距、特效）
+- 编写 tech-spec.md 技术规划（依赖、组件、动画方案、状态管理）
+
+### Phase 2: 前端构建 ✅
+- 初始化 React + TypeScript + Vite + Tailwind CSS + shadcn/ui 项目
+- 生成3张高质量AI概念展示图（水杯/T恤/鼠标）
+- 生成50种品类AI产品主图（3C数码×10、服饰鞋包×10、家居日用×10、美妆个护×10、家电×10）
+- 50张图4维度质量评分验证：平均分96.2分，达标率100%，不合格率0%
+- 迭代优化3张低分图（摄像头+10分、面膜+7分、电饭煲+8分）
+
+### Phase 3: 核心特效 ✅
+- 液态渐变文字引擎（LiquidGradientText）：20段精确CSS渐变 + 扫描流动 + 故障闪烁
+- 视差滚动图集（ParallaxGallery）：GSAP ScrollTrigger + SplitType 3D圆柱体文字旋转
+- Lenis平滑滚动与GSAP帧同步
+- 品类卡片hover渐变边缘发光
+- 评分进度条渐变填充动画
+
+### Phase 4: 页面结构 ✅
+- 吸顶导航栏（毛玻璃 + 酸性渐变CTA）
+- Hero英雄区（深色背景 + 液态渐变背景字 + 数据指标）
+- 能力展示区（sticky左栏 + 滚动右栏，瑞士网格排版）
+- 沉浸式生成体验区（视差滚动图集 + 3D文字旋转）
+- 50品类覆盖区（5品类×10产品网格，hover态）
+- 质量评分体系区（85+渐变数字 + 4维度进度条）
+- 页脚（4列链接 + 液态渐变大标题）
+
+### Phase 5: 交互工作流 ✅
+- 5步完整生图工作流：素材上传 → 参数配置 → AI生成 → 质量校验 → 导出上架
+- 拖拽上传 + 示例素材快速体验
+- 参数配置面板（品类/场景/色调/光影/比例/平台）
+- 实时进度条 + SKU逐个生成动画
+- 逐张4维度评分 + 低分图重新生成
+- 详细评分弹窗（含后端AI Prompt展示）
+
+### Phase 6: 后端架构 ✅
+- 嫁接 backend-building 技能（Hono + tRPC + MySQL + Drizzle ORM）
+- 数据库表：generation_tasks（任务表）、generation_results（结果表）
+- tRPC Router：imageGen（5个API端点）
+  - createTask: 创建生图任务
+  - generate: 执行生图（含Prompt工程 + 评分算法）
+  - getTask: 获取任务详情
+  - getResults: 获取结果列表
+  - regenerateOne: 单张重新生成
+- Prompt工程系统：品类/场景/色调/光影 → 英文Prompt自动构建
+- 质量评分算法：基于seed的确定性伪随机4维度评分
+- 前端tRPC客户端集成（React Query + 实时数据同步）
+
+## 下一步（待实现）
+- 接入真实AI生图API（Replicate/Leonardo/通义万相）替换模拟逻辑
+- 接入GPT-4V/Qwen-VL实现Figma设计稿/原始图片理解
+- 接入ControlNet/IPAdapter保持产品形态一致性
+- 用户认证系统（OAuth 2.0）
+- 批量下载ZIP导出
+- 电商平台API对接（淘宝/京东/亚马逊）
+- 多SKU并发生成优化（队列系统）
+
+## 技术栈
+- Frontend: React 19 + TypeScript + Vite + Tailwind CSS + shadcn/ui
+- Animation: GSAP + ScrollTrigger + SplitType + Lenis
+- Backend: Hono + tRPC 11.x
+- Database: MySQL + Drizzle ORM
+- State: React Query (tRPC client)

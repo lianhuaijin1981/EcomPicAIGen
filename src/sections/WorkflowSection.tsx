@@ -1,4 +1,5 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
+import { trpc } from '@/providers/trpc';
 import {
   Upload, X, Image as ImageIcon,
   Wand2, CheckCircle, Download,
@@ -13,18 +14,6 @@ interface UploadedFile {
   name: string;
   preview: string;
   size: number;
-}
-
-interface GenResult {
-  id: string;
-  name: string;
-  image: string;
-  decision: number;
-  info: number;
-  trust: number;
-  visual: number;
-  total: number;
-  status: 'PASS' | 'MARGINAL' | 'FAIL';
 }
 
 interface GenConfig {
@@ -85,36 +74,6 @@ const PLATFORMS = [
   { id: 'douyin', name: '抖音电商' },
 ];
 
-// ============== 预设生成结果 ==============
-const PRESET_RESULTS: Record<string, string> = {
-  '1': '/images/products/02_earbuds.jpg',
-  '2': '/images/products/07_keyboard.jpg',
-  '3': '/images/products/10_smartwatch.jpg',
-  '4': '/images/products/15_sneakers.jpg',
-  '5': '/images/products/17_backpack.jpg',
-  '6': '/images/products/31_lipstick.jpg',
-  '7': '/images/products/45_humidifier.jpg',
-  '8': '/images/products/48_kettle.jpg',
-};
-
-function generateScore(seed: string): Omit<GenResult, 'id' | 'name' | 'image'> {
-  // 基于seed生成伪随机但稳定的分数
-  let hash = 0;
-  for (let i = 0; i < seed.length; i++) {
-    hash = ((hash << 5) - hash + seed.charCodeAt(i)) | 0;
-  }
-  const base = Math.abs(hash) % 15;
-  const decision = Math.min(30, 26 + (base % 4));
-  const info = Math.min(25, 22 + (base % 3));
-  const trust = Math.min(25, 23 + (base % 2));
-  const visual = Math.min(20, 18 + (base % 3));
-  const total = decision + info + trust + visual;
-  return {
-    decision, info, trust, visual, total,
-    status: total >= 85 ? 'PASS' : total >= 70 ? 'MARGINAL' : 'FAIL',
-  };
-}
-
 export default function WorkflowSection() {
   const [step, setStep] = useState(1);
   const [files, setFiles] = useState<UploadedFile[]>([]);
@@ -127,9 +86,31 @@ export default function WorkflowSection() {
     platform: 'taobao',
   });
   const [progress, setProgress] = useState(0);
-  const [results, setResults] = useState<GenResult[]>([]);
-  const [selectedResult, setSelectedResult] = useState<string | null>(null);
+  const [taskId, setTaskId] = useState<number | null>(null);
+  const [results, setResults] = useState<any[]>([]);
+  const [selectedResult, setSelectedResult] = useState<number | null>(null);
+  const [taskComplete, setTaskComplete] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // tRPC mutations
+  const createTask = trpc.imageGen.createTask.useMutation();
+  const generate = trpc.imageGen.generate.useMutation();
+  const regenerateOne = trpc.imageGen.regenerateOne.useMutation();
+
+  // Query for results when on step 4
+  const resultsQuery = trpc.imageGen.getResults.useQuery(
+    { taskId: taskId! },
+    { enabled: !!taskId && step === 4, refetchInterval: taskComplete ? false : 1000 }
+  );
+
+  // Update local results when query data changes
+  useEffect(() => {
+    if (resultsQuery.data && resultsQuery.data.length > 0) {
+      setResults(resultsQuery.data);
+      const completed = resultsQuery.data.every((r: any) => r.generatedImage);
+      if (completed) setTaskComplete(true);
+    }
+  }, [resultsQuery.data]);
 
   // 拖拽上传
   const handleDrop = useCallback((e: React.DragEvent) => {
@@ -168,48 +149,56 @@ export default function WorkflowSection() {
     })));
   };
 
-  const startGenerate = () => {
+  // ===== 开始生成：先创建任务，再执行生成 =====
+  const startGenerate = async () => {
     if (files.length === 0) return;
-    setStep(3);
-    setProgress(0);
 
-    const duration = 3000; // 3秒模拟生成
-    const interval = 50;
-    let current = 0;
+    try {
+      // Step 1: 创建任务
+      const task = await createTask.mutateAsync({
+        config,
+        files: files.map(f => ({ name: f.name, preview: f.preview, size: f.size })),
+      });
 
-    const timer = setInterval(() => {
-      current += (interval / duration) * 100;
-      if (current >= 100) {
-        current = 100;
-        clearInterval(timer);
-        setTimeout(() => {
-          // 生成结果
-          const res: GenResult[] = files.map((f, i) => {
-            const seed = `${f.name}-${config.category}-${config.sceneType}`;
-            const scores = generateScore(seed);
-            const imgKey = `${(i % 8) + 1}`;
-            return {
-              id: f.id,
-              name: f.name,
-              image: PRESET_RESULTS[imgKey] || f.preview,
-              ...scores,
-            };
-          });
-          setResults(res);
-          setStep(4);
-        }, 500);
-      }
-      setProgress(Math.min(current, 100));
-    }, interval);
+      setTaskId(task.taskId);
+      setStep(3);
+      setProgress(0);
+      setTaskComplete(false);
+
+      // 模拟进度条动画
+      const duration = 3000;
+      const interval = 50;
+      let current = 0;
+      const timer = setInterval(() => {
+        current += (interval / duration) * 100;
+        if (current >= 100) {
+          current = 100;
+          clearInterval(timer);
+        }
+        setProgress(Math.min(current, 100));
+      }, interval);
+
+      // Step 2: 调用后端生成
+      const genResult = await generate.mutateAsync({ taskId: task.taskId });
+
+      clearInterval(timer);
+      setProgress(100);
+      setResults(genResult.results);
+      setStep(4);
+    } catch (err) {
+      console.error('Generate failed:', err);
+      alert('生成失败，请重试');
+    }
   };
 
-  const regenerateOne = (id: string) => {
-    setResults(prev => prev.map(r => {
-      if (r.id !== id) return r;
-      const seed = `${r.name}-v2-${Date.now()}`;
-      const scores = generateScore(seed);
-      return { ...r, ...scores };
-    }));
+  // ===== 重新生成单张 =====
+  const handleRegenerate = async (resultId: number) => {
+    try {
+      const updated = await regenerateOne.mutateAsync({ resultId });
+      setResults(prev => prev.map(r => r.id === updated.id ? updated : r));
+    } catch (err) {
+      console.error('Regenerate failed:', err);
+    }
   };
 
   const exportAll = () => {
@@ -224,6 +213,13 @@ export default function WorkflowSection() {
     { num: 5, title: '导出上架' },
   ];
 
+  // 计算统计数据
+  const avgScore = results.length > 0
+    ? Math.round(results.reduce((a, r) => a + (r.totalScore || 0), 0) / results.length)
+    : 0;
+  const passCount = results.filter((r: any) => r.status === 'PASS').length;
+  const failCount = results.filter((r: any) => r.status === 'FAIL').length;
+
   return (
     <section className="bg-[#F3F4F2] py-32" id="generator">
       <div className="max-w-6xl mx-auto px-6">
@@ -233,7 +229,7 @@ export default function WorkflowSection() {
             体验 AI 主图生成工作流
           </h2>
           <p className="text-base text-[#666C74] max-w-2xl mx-auto">
-            从素材上传到批量出图，仅需 5 步。支持 50 种品类，自动质量校验，10 秒极速生成。
+            前端上传 → 后端 Prompt 工程 → AI 生成 → 质量评分 → 数据库存储。全栈实时演示。
           </p>
         </div>
 
@@ -300,7 +296,6 @@ export default function WorkflowSection() {
               </button>
             </div>
 
-            {/* File List */}
             {files.length > 0 && (
               <div className="mt-6 bg-white rounded-lg border border-[#DDDDDD] p-4">
                 <div className="flex items-center justify-between mb-3">
@@ -496,7 +491,7 @@ export default function WorkflowSection() {
 
             {/* 配置预览 */}
             <div className="mt-8 p-4 bg-[#E7E9E6] rounded">
-              <h4 className="text-sm font-semibold text-[#131415] mb-2">当前配置</h4>
+              <h4 className="text-sm font-semibold text-[#131415] mb-2">当前配置（将被转化为 AI Prompt）</h4>
               <div className="flex flex-wrap gap-2">
                 {[
                   CATEGORIES.find(c => c.id === config.category)?.name,
@@ -511,6 +506,9 @@ export default function WorkflowSection() {
                   </span>
                 ))}
               </div>
+              <p className="text-xs text-[#666C74] mt-2">
+                后端将把这些参数转化为英文 Prompt，调用 AI 生图模型
+              </p>
             </div>
 
             <div className="mt-6 flex items-center justify-between">
@@ -522,10 +520,15 @@ export default function WorkflowSection() {
               </button>
               <button
                 onClick={startGenerate}
-                className="gradient-btn px-8 py-3 text-white font-semibold rounded flex items-center gap-2"
+                disabled={createTask.isPending || generate.isPending}
+                className="gradient-btn px-8 py-3 text-white font-semibold rounded flex items-center gap-2 disabled:opacity-50"
               >
-                <Wand2 size={16} />
-                开始批量生成 ({files.length} SKU)
+                {(createTask.isPending || generate.isPending) ? (
+                  <RefreshCw size={16} className="animate-spin" />
+                ) : (
+                  <Wand2 size={16} />
+                )}
+                {createTask.isPending ? '创建任务中...' : generate.isPending ? 'AI生成中...' : `开始批量生成 (${files.length} SKU)`}
               </button>
             </div>
           </div>
@@ -540,14 +543,16 @@ export default function WorkflowSection() {
                   <Wand2 size={28} className="text-[#FF003C] animate-pulse" />
                 </div>
                 <h3 className="text-xl font-bold text-[#131415] mb-2">
-                  AI 正在批量生成主图
+                  后端正在执行 AI 生成
                 </h3>
                 <p className="text-sm text-[#666C74]">
-                  预计 {Math.ceil(files.length * 2)} 秒完成，正在处理 {files.length} 个 SKU
+                  数据流：Prompt 工程 → 调用 AI 模型 → 结果存储数据库
                 </p>
+                {taskId && (
+                  <p className="text-xs text-[#666C74] mt-1">任务ID: {taskId}</p>
+                )}
               </div>
 
-              {/* Progress Bar */}
               <div className="mb-6">
                 <div className="h-3 bg-[#E7E9E6] rounded-full overflow-hidden">
                   <div
@@ -558,7 +563,6 @@ export default function WorkflowSection() {
                 <p className="text-sm text-[#666C74] mt-2">{Math.round(progress)}%</p>
               </div>
 
-              {/* SKU Progress */}
               <div className="grid grid-cols-5 gap-2">
                 {files.map((f, i) => {
                   const threshold = ((i + 1) / files.length) * 100;
@@ -594,30 +598,24 @@ export default function WorkflowSection() {
             <div className="bg-white rounded-lg border border-[#DDDDDD] p-6 mb-6">
               <div className="flex items-center justify-between flex-wrap gap-4">
                 <div>
-                  <h3 className="text-lg font-bold text-[#131415]">质量校验报告</h3>
+                  <h3 className="text-lg font-bold text-[#131415]">后端质量校验报告</h3>
                   <p className="text-sm text-[#666C74]">
-                    共 {results.length} 张，平均分 <span className="font-bold text-[#FF003C]">
-                      {(results.reduce((a, r) => a + r.total, 0) / results.length).toFixed(1)}
-                    </span> 分
+                    共 {results.length} 张，数据库计算平均分 <span className="font-bold text-[#FF003C]">{avgScore}</span> 分
                   </p>
                 </div>
                 <div className="flex items-center gap-4">
                   <div className="text-center">
-                    <div className="text-2xl font-bold text-[#22c55e]">
-                      {results.filter(r => r.status === 'PASS').length}
-                    </div>
+                    <div className="text-2xl font-bold text-[#22c55e]">{passCount}</div>
                     <div className="text-xs text-[#666C74]">优秀(≥85)</div>
                   </div>
                   <div className="text-center">
                     <div className="text-2xl font-bold text-[#f59e0b]">
-                      {results.filter(r => r.status === 'MARGINAL').length}
+                      {results.filter((r: any) => r.status === 'MARGINAL').length}
                     </div>
                     <div className="text-xs text-[#666C74]">良好(70-84)</div>
                   </div>
                   <div className="text-center">
-                    <div className="text-2xl font-bold text-[#ef4444]">
-                      {results.filter(r => r.status === 'FAIL').length}
-                    </div>
+                    <div className="text-2xl font-bold text-[#ef4444]">{failCount}</div>
                     <div className="text-xs text-[#666C74]">不合格(&lt;70)</div>
                   </div>
                 </div>
@@ -626,7 +624,7 @@ export default function WorkflowSection() {
 
             {/* 结果网格 */}
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 mb-6">
-              {results.map(r => (
+              {results.map((r: any) => (
                 <div
                   key={r.id}
                   className={`bg-white rounded-lg border-2 overflow-hidden cursor-pointer transition-all ${
@@ -635,27 +633,32 @@ export default function WorkflowSection() {
                   onClick={() => setSelectedResult(selectedResult === r.id ? null : r.id)}
                 >
                   <div className="aspect-square overflow-hidden">
-                    <img src={r.image} alt={r.name} className="w-full h-full object-cover" />
+                    {r.generatedImage ? (
+                      <img src={r.generatedImage} alt={r.skuName} className="w-full h-full object-cover" />
+                    ) : (
+                      <div className="w-full h-full bg-[#E7E9E6] flex items-center justify-center">
+                        <RefreshCw size={20} className="text-[#666C74] animate-spin" />
+                      </div>
+                    )}
                   </div>
                   <div className="p-3">
                     <div className="flex items-center justify-between mb-2">
-                      <span className="text-xs font-medium text-[#131415] truncate">{r.name}</span>
+                      <span className="text-xs font-medium text-[#131415] truncate">{r.skuName}</span>
                       <span className={`text-xs font-bold px-1.5 py-0.5 rounded ${
                         r.status === 'PASS' ? 'bg-[#22c55e]/10 text-[#22c55e]' :
                         r.status === 'MARGINAL' ? 'bg-[#f59e0b]/10 text-[#f59e0b]' :
                         'bg-[#ef4444]/10 text-[#ef4444]'
                       }`}>
-                        {r.total}
+                        {r.totalScore || 0}
                       </span>
                     </div>
-                    {/* 4维度迷你条 */}
                     <div className="space-y-1">
                       {[
-                        { label: '决策', val: r.decision, max: 30 },
-                        { label: '信息', val: r.info, max: 25 },
-                        { label: '信任', val: r.trust, max: 25 },
-                        { label: '视觉', val: r.visual, max: 20 },
-                      ].map(d => (
+                        { label: '决策', val: r.decisionScore || 0, max: 30 },
+                        { label: '信息', val: r.infoScore || 0, max: 25 },
+                        { label: '信任', val: r.trustScore || 0, max: 25 },
+                        { label: '视觉', val: r.visualScore || 0, max: 20 },
+                      ].map((d: any) => (
                         <div key={d.label} className="flex items-center gap-1">
                           <span className="text-[10px] text-[#666C74] w-6">{d.label}</span>
                           <div className="flex-1 h-1.5 bg-[#E7E9E6] rounded-full overflow-hidden">
@@ -674,10 +677,12 @@ export default function WorkflowSection() {
                     </div>
                     {r.status !== 'PASS' && (
                       <button
-                        onClick={(e) => { e.stopPropagation(); regenerateOne(r.id); }}
-                        className="mt-2 w-full flex items-center justify-center gap-1 text-xs text-[#FF003C] hover:bg-[#FFF0F3] py-1 rounded transition-colors"
+                        onClick={(e) => { e.stopPropagation(); handleRegenerate(r.id); }}
+                        disabled={regenerateOne.isPending}
+                        className="mt-2 w-full flex items-center justify-center gap-1 text-xs text-[#FF003C] hover:bg-[#FFF0F3] py-1 rounded transition-colors disabled:opacity-50"
                       >
-                        <RefreshCw size={10} /> 重新生成
+                        <RefreshCw size={10} className={regenerateOne.isPending ? 'animate-spin' : ''} />
+                        重新生成
                       </button>
                     )}
                   </div>
@@ -687,22 +692,32 @@ export default function WorkflowSection() {
 
             {/* 选中详情 */}
             {selectedResult && (() => {
-              const r = results.find(x => x.id === selectedResult);
+              const r = results.find((x: any) => x.id === selectedResult);
               if (!r) return null;
               return (
                 <div className="bg-white rounded-lg border border-[#DDDDDD] p-6 mb-6">
                   <div className="flex flex-col md:flex-row gap-6">
                     <div className="w-full md:w-64 aspect-square rounded overflow-hidden border border-[#DDDDDD]">
-                      <img src={r.image} alt={r.name} className="w-full h-full object-cover" />
+                      {r.generatedImage ? (
+                        <img src={r.generatedImage} alt={r.skuName} className="w-full h-full object-cover" />
+                      ) : (
+                        <div className="w-full h-full bg-[#E7E9E6] flex items-center justify-center text-[#666C74]">生成中...</div>
+                      )}
                     </div>
                     <div className="flex-1">
-                      <h4 className="text-lg font-bold text-[#131415] mb-4">{r.name} - 详细评分</h4>
+                      <h4 className="text-lg font-bold text-[#131415] mb-2">{r.skuName} - 详细评分</h4>
+                      {r.prompt && (
+                        <div className="mb-4 p-3 bg-[#F3F4F2] rounded">
+                          <p className="text-xs text-[#666C74] font-medium mb-1">后端使用的 AI Prompt：</p>
+                          <p className="text-xs text-[#131415] italic">{r.prompt}</p>
+                        </div>
+                      )}
                       <div className="space-y-4">
                         {[
-                          { name: '决策引导力', weight: '30%', score: r.decision, max: 30, desc: '产品主体突出、卖点直观' },
-                          { name: '信息传递效率', weight: '25%', score: r.info, max: 25, desc: '构图专业、层级清晰' },
-                          { name: '商品真实信任度', weight: '25%', score: r.trust, max: 25, desc: '无色偏畸变、材质真实' },
-                          { name: '视觉专业质感', weight: '20%', score: r.visual, max: 20, desc: '高清、配色和谐、版式整洁' },
+                          { name: '决策引导力', weight: '30%', score: r.decisionScore || 0, max: 30, desc: '产品主体突出、卖点直观' },
+                          { name: '信息传递效率', weight: '25%', score: r.infoScore || 0, max: 25, desc: '构图专业、层级清晰' },
+                          { name: '商品真实信任度', weight: '25%', score: r.trustScore || 0, max: 25, desc: '无色偏畸变、材质真实' },
+                          { name: '视觉专业质感', weight: '20%', score: r.visualScore || 0, max: 20, desc: '高清、配色和谐、版式整洁' },
                         ].map(d => (
                           <div key={d.name}>
                             <div className="flex items-center justify-between mb-1">
@@ -731,7 +746,7 @@ export default function WorkflowSection() {
                             r.status === 'PASS' ? 'text-[#22c55e]' :
                             r.status === 'MARGINAL' ? 'text-[#f59e0b]' :
                             'text-[#ef4444]'
-                          }`}>{r.total}</span>
+                          }`}>{r.totalScore || 0}</span>
                           <span className={`text-xs px-2 py-1 rounded ${
                             r.status === 'PASS' ? 'bg-[#22c55e]/10 text-[#22c55e]' :
                             r.status === 'MARGINAL' ? 'bg-[#f59e0b]/10 text-[#f59e0b]' :
@@ -749,7 +764,7 @@ export default function WorkflowSection() {
 
             <div className="flex items-center justify-between">
               <button
-                onClick={() => { setStep(2); setResults([]); }}
+                onClick={() => { setStep(2); setResults([]); setTaskId(null); }}
                 className="text-sm text-[#666C74] hover:text-[#131415]"
               >
                 返回修改配置
@@ -759,7 +774,7 @@ export default function WorkflowSection() {
                 className="gradient-btn px-8 py-3 text-white font-semibold rounded flex items-center gap-2"
               >
                 <CheckCircle size={16} />
-                确认并导出 ({results.filter(r => r.status === 'PASS').length} 张合格)
+                确认并导出 ({passCount} 张合格)
               </button>
             </div>
           </div>
@@ -775,34 +790,35 @@ export default function WorkflowSection() {
               <h3 className="text-xl font-bold text-[#131415] mb-2">
                 批量生成完成
               </h3>
-              <p className="text-sm text-[#666C74] mb-6">
-                {results.filter(r => r.status === 'PASS').length} 张主图已达标，可直接上架；
-                {results.filter(r => r.status !== 'PASS').length} 张需微调
+              <p className="text-sm text-[#666C74] mb-2">
+                {passCount} 张主图已达标，可直接上架；
+                {results.length - passCount} 张需微调
               </p>
+              {taskId && (
+                <p className="text-xs text-[#666C74] mb-6">
+                  所有结果已持久化存储至数据库，任务ID: {taskId}
+                </p>
+              )}
 
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-                {results.filter(r => r.status === 'PASS').slice(0, 4).map(r => (
+                {results.filter((r: any) => r.status === 'PASS').slice(0, 4).map((r: any) => (
                   <div key={r.id} className="rounded overflow-hidden border border-[#DDDDDD]">
                     <div className="aspect-square">
-                      <img src={r.image} alt={r.name} className="w-full h-full object-cover" />
+                      <img src={r.generatedImage} alt={r.skuName} className="w-full h-full object-cover" />
                     </div>
                     <div className="p-2 text-center">
-                      <span className="text-xs text-[#666C74]">{r.name}</span>
+                      <span className="text-xs text-[#666C74]">{r.skuName}</span>
                     </div>
                   </div>
                 ))}
               </div>
 
               <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
-                <button
-                  className="flex items-center gap-2 px-6 py-3 bg-[#131415] text-white rounded font-medium hover:bg-[#333] transition-colors"
-                >
+                <button className="flex items-center gap-2 px-6 py-3 bg-[#131415] text-white rounded font-medium hover:bg-[#333] transition-colors">
                   <Download size={16} />
                   批量下载全部
                 </button>
-                <button
-                  className="flex items-center gap-2 px-6 py-3 border border-[#DDDDDD] rounded font-medium hover:border-[#FF003C] hover:text-[#FF003C] transition-colors"
-                >
+                <button className="flex items-center gap-2 px-6 py-3 border border-[#DDDDDD] rounded font-medium hover:border-[#FF003C] hover:text-[#FF003C] transition-colors">
                   <ShoppingBag size={16} />
                   一键上架到{PLATFORMS.find(p => p.id === config.platform)?.name}
                 </button>
@@ -814,7 +830,8 @@ export default function WorkflowSection() {
                     setStep(1);
                     setFiles([]);
                     setResults([]);
-                    setSelectedResult(null);
+                    setTaskId(null);
+                    setTaskComplete(false);
                   }}
                   className="text-sm text-[#FF003C] hover:underline"
                 >
