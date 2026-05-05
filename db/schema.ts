@@ -1,105 +1,58 @@
-import {
-  mysqlTable,
-  serial,
-  varchar,
-  text,
-  int,
-  timestamp,
-  json,
-  boolean,
-} from "drizzle-orm/mysql-core";
+import { sqliteTable, integer, text } from "drizzle-orm/sqlite-core";
 
 // =================== 算法库管理表 ===================
-// 存储所有可用的生图算法，支持多算法组合调度
-export const algorithms = mysqlTable("algorithms", {
-  id: serial("id").primaryKey(),
-  // 算法名称（如"Flux通用文生图"、"IPAdapter商品保真"、"ControlNet结构约束"）
-  name: varchar("name", { length: 255 }).notNull(),
-  // 算法类型: general | product_fidelity | controlnet | lora | upscaler | compliance
-  type: varchar("type", { length: 50 }).notNull(),
-  // 算法描述
+export const algorithms = sqliteTable("algorithms", {
+  id: integer("id", { mode: "number" }).primaryKey({ autoIncrement: true }),
+  name: text("name").notNull(),
+  type: text("type").notNull(),
   description: text("description"),
-  // 适配品类（JSON数组，如["3c","fashion","home"]）
-  categories: json("categories").notNull(),
-  // 适配用途（JSON数组，如["white","scene","detail","banner"]）
-  scenes: json("scenes").notNull(),
-  // 适配风格（JSON数组，如["cool","warm","gray","realistic","3d"]）
-  styles: json("styles").notNull(),
-  // 适配质量层级: standard | premium | ultra
-  qualityTier: varchar("quality_tier", { length: 20 }).notNull().default("standard"),
-  // 外部API端点（如Replicate/Leonardo的URL）
+  // JSON 数组存储为文本
+  categories: text("categories", { mode: "json" }).notNull().$default(() => []),
+  scenes: text("scenes", { mode: "json" }).notNull().$default(() => []),
+  styles: text("styles", { mode: "json" }).notNull().$default(() => []),
+  qualityTier: text("quality_tier").notNull().default("standard"),
   apiEndpoint: text("api_endpoint"),
-  // API密钥引用（指向环境变量名，如REPLICATE_API_KEY）
-  apiKeyRef: varchar("api_key_ref", { length: 100 }),
-  // 算法优先级（数字越小优先级越高，用于路由匹配排序）
-  priority: int("priority").notNull().default(100),
-  // 是否启用
-  enabled: boolean("enabled").notNull().default(true),
-  // 成功率评分（0-100，后端统计）
-  successRate: int("success_rate"),
-  // 平均分（基于历史生成结果）
-  avgScore: int("avg_score"),
-  // 创建时间
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-  // 更新时间
-  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  apiKeyRef: text("api_key_ref"),
+  priority: integer("priority").notNull().default(100),
+  enabled: integer("enabled", { mode: "boolean" }).notNull().default(true),
+  successRate: integer("success_rate"),
+  avgScore: integer("avg_score"),
+  createdAt: integer("created_at", { mode: "timestamp" }).$defaultFn(() => new Date()),
+  updatedAt: integer("updated_at", { mode: "timestamp" }).$defaultFn(() => new Date()),
 });
 
 // =================== AI 主图生成任务表 ===================
-export const generationTasks = mysqlTable("generation_tasks", {
-  id: serial("id").primaryKey(),
-  // 任务配置（品类、场景类型、色调、光影、比例、平台）
-  config: json("config").notNull(),
-  // 算法路由信息：本次任务使用的算法组合策略
-  algorithmRoute: json("algorithm_route"),
-  // 算法模式: single | parallel | adaptive
-  algorithmMode: varchar("algorithm_mode", { length: 20 }).notNull().default("single"),
-  // 原始上传图片列表（JSON数组，包含name, previewUrl, size）
-  sourceImages: json("source_images").notNull(),
-  // 任务状态: pending | generating | scoring | completed | failed
-  status: varchar("status", { length: 20 }).notNull().default("pending"),
-  // 总分平均分
-  avgScore: int("avg_score"),
-  // 合格数量
-  passCount: int("pass_count"),
-  // 总数量
-  totalCount: int("total_count"),
-  // 失败原因（如有）
+export const generationTasks = sqliteTable("generation_tasks", {
+  id: integer("id", { mode: "number" }).primaryKey({ autoIncrement: true }),
+  config: text("config", { mode: "json" }).notNull(),
+  algorithmRoute: text("algorithm_route", { mode: "json" }),
+  algorithmMode: text("algorithm_mode").notNull().default("single"),
+  sourceImages: text("source_images", { mode: "json" }).notNull(),
+  status: text("status").notNull().default("pending"),
+  avgScore: integer("avg_score"),
+  passCount: integer("pass_count"),
+  totalCount: integer("total_count"),
   errorMsg: text("error_msg"),
-  // 创建时间
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-  // 完成时间
-  completedAt: timestamp("completed_at"),
+  createdAt: integer("created_at", { mode: "timestamp" }).$defaultFn(() => new Date()),
+  completedAt: integer("completed_at", { mode: "timestamp" }),
 });
 
 // =================== 单张生成结果表 ===================
-export const generationResults = mysqlTable("generation_results", {
-  id: serial("id").primaryKey(),
-  // 关联任务ID
-  taskId: int("task_id").notNull(),
-  // 使用的算法ID
-  algorithmId: int("algorithm_id"),
-  // 使用的算法名称（冗余存储，便于查询）
-  algorithmName: varchar("algorithm_name", { length: 255 }),
-  // SKU名称
-  skuName: varchar("sku_name", { length: 255 }).notNull(),
-  // 源图片URL
+export const generationResults = sqliteTable("generation_results", {
+  id: integer("id", { mode: "number" }).primaryKey({ autoIncrement: true }),
+  taskId: integer("task_id").notNull(),
+  algorithmId: integer("algorithm_id"),
+  algorithmName: text("algorithm_name"),
+  skuName: text("sku_name").notNull(),
   sourceImage: text("source_image"),
-  // 生成后图片URL
   generatedImage: text("generated_image"),
-  // 4维度评分
-  decisionScore: int("decision_score"),
-  infoScore: int("info_score"),
-  trustScore: int("trust_score"),
-  visualScore: int("visual_score"),
-  // 总分
-  totalScore: int("total_score"),
-  // 状态: PASS | MARGINAL | FAIL
-  status: varchar("status", { length: 20 }),
-  // 生成所用的prompt
+  decisionScore: integer("decision_score"),
+  infoScore: integer("info_score"),
+  trustScore: integer("trust_score"),
+  visualScore: integer("visual_score"),
+  totalScore: integer("total_score"),
+  status: text("status"),
   prompt: text("prompt"),
-  // 重试次数
-  retryCount: int("retry_count").notNull().default(0),
-  // 创建时间
-  createdAt: timestamp("created_at").notNull().defaultNow(),
+  retryCount: integer("retry_count").notNull().default(0),
+  createdAt: integer("created_at", { mode: "timestamp" }).$defaultFn(() => new Date()),
 });

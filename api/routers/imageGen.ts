@@ -178,8 +178,8 @@ export const imageGenRouter = createRouter({
         score: Math.round(m.score),
       }));
 
-      // 2. 创建任务记录
-      const insertRes = await db
+      // 2. 创建任务记录（SQLite 支持 returning）
+      const [task] = await db
         .insert(generationTasks)
         .values({
           config: input.config,
@@ -190,9 +190,9 @@ export const imageGenRouter = createRouter({
           totalCount: input.files.length,
           passCount: 0,
         })
-        .$returningId();
+        .returning();
 
-      const taskId = insertRes[0].id;
+      const taskId = task.id;
 
       // 3. 为每个SKU预创建结果记录
       for (let i = 0; i < input.files.length; i++) {

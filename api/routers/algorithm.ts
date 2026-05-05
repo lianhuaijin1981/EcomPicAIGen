@@ -158,7 +158,7 @@ export const algorithmRouter = createRouter({
             priority: input.priority,
             enabled: input.enabled,
           })
-          .$returningId();
+          .returning();
         return { id: result.id, action: "created" };
       }
     }),
