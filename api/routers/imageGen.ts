@@ -122,17 +122,45 @@ function generateScore(seed: string, algoType: string) {
   };
 }
 
-// 预设生成结果图片映射（开发环境模拟用）
-const PRESET_IMAGES = [
-  "/images/products/01_phone.jpg",
-  "/images/products/02_earbuds.jpg",
-  "/images/products/07_keyboard.jpg",
-  "/images/products/10_smartwatch.jpg",
-  "/images/products/15_sneakers.jpg",
-  "/images/products/17_backpack.jpg",
-  "/images/products/31_lipstick.jpg",
-  "/images/products/45_humidifier.jpg",
-];
+// 按品类+场景建立的预设图片映射，确保品类一致性
+const PRESET_IMAGES_BY_CATEGORY: Record<string, Record<string, string[]>> = {
+  "3c": {
+    white: ["/images/products/01_phone.jpg", "/images/products/03_charger.jpg", "/images/products/04_powerbank.jpg", "/images/products/05_laptop.jpg", "/images/products/06_tablet.jpg"],
+    scene: ["/images/products/02_earbuds.jpg", "/images/products/08_mouse.jpg", "/images/products/10_smartwatch.jpg", "/images/products/09_webcam.jpg", "/images/products/07_keyboard.jpg"],
+    detail: ["/images/products/03_charger.jpg", "/images/products/04_powerbank.jpg", "/images/products/08_mouse.jpg", "/images/products/02_earbuds.jpg"],
+    banner: ["/images/products/05_laptop.jpg", "/images/products/06_tablet.jpg", "/images/products/01_phone.jpg", "/images/products/10_smartwatch.jpg"],
+  },
+  fashion: {
+    white: ["/images/products/11_tshirt.jpg", "/images/products/12_jeans.jpg", "/images/products/14_jacket.jpg", "/images/products/19_cap.jpg", "/images/products/20_scarf.jpg"],
+    scene: ["/images/products/15_sneakers.jpg", "/images/products/16_leather_shoes.jpg", "/images/products/13_dress.jpg", "/images/products/17_backpack.jpg", "/images/products/18_wallet.jpg"],
+    detail: ["/images/products/15_sneakers.jpg", "/images/products/16_leather_shoes.jpg", "/images/products/20_scarf.jpg", "/images/products/14_jacket.jpg"],
+    banner: ["/images/products/13_dress.jpg", "/images/products/17_backpack.jpg", "/images/products/12_jeans.jpg", "/images/products/11_tshirt.jpg"],
+  },
+  home: {
+    white: ["/images/products/21_water_bottle.jpg", "/images/products/22_towel.jpg", "/images/products/25_storage.jpg", "/images/products/26_lamp.jpg", "/images/products/30_trashbin.jpg"],
+    scene: ["/images/products/22_towel.jpg", "/images/products/24_tissue.jpg", "/images/products/27_pillow.jpg", "/images/products/28_quilt.jpg", "/images/products/29_dinnerware.jpg"],
+    detail: ["/images/products/21_water_bottle.jpg", "/images/products/23_laundry.jpg", "/images/products/25_storage.jpg", "/images/products/26_lamp.jpg"],
+    banner: ["/images/products/28_quilt.jpg", "/images/products/27_pillow.jpg", "/images/products/29_dinnerware.jpg", "/images/products/30_trashbin.jpg"],
+  },
+  beauty: {
+    white: ["/images/products/31_lipstick.jpg", "/images/products/32_foundation.jpg", "/images/products/33_facemask_v2.jpg", "/images/products/34_cleanser.jpg", "/images/products/36_lotion.jpg"],
+    scene: ["/images/products/35_toner.jpg", "/images/products/37_sunscreen.jpg", "/images/products/38_eyeshadow.jpg", "/images/products/39_mascara.jpg", "/images/products/40_shampoo.jpg"],
+    detail: ["/images/products/31_lipstick.jpg", "/images/products/32_foundation.jpg", "/images/products/38_eyeshadow.jpg", "/images/products/33_facemask_v2.jpg"],
+    banner: ["/images/products/35_toner.jpg", "/images/products/37_sunscreen.jpg", "/images/products/40_shampoo.jpg", "/images/products/39_mascara.jpg"],
+  },
+  appliance: {
+    white: ["/images/products/41_rice_cooker_v2.jpg", "/images/products/42_induction.jpg", "/images/products/43_microwave.jpg", "/images/products/44_fan.jpg", "/images/products/45_humidifier.jpg"],
+    scene: ["/images/products/46_vacuum.jpg", "/images/products/47_hairdryer.jpg", "/images/products/48_kettle.jpg", "/images/products/49_purifier.jpg", "/images/products/50_juicer.jpg"],
+    detail: ["/images/products/45_humidifier.jpg", "/images/products/48_kettle.jpg", "/images/products/46_vacuum.jpg", "/images/products/47_hairdryer.jpg"],
+    banner: ["/images/products/43_microwave.jpg", "/images/products/41_rice_cooker_v2.jpg", "/images/products/49_purifier.jpg", "/images/products/50_juicer.jpg"],
+  },
+};
+
+// 兜底映射：当品类缺失时返回默认图片
+function getPresetImages(category: string, sceneType: string): string[] {
+  const cat = PRESET_IMAGES_BY_CATEGORY[category] || PRESET_IMAGES_BY_CATEGORY["3c"];
+  return cat[sceneType] || cat["white"] || ["/images/products/01_phone.jpg"];
+}
 
 export const imageGenRouter = createRouter({
   // ===== 1. 创建生图任务（含算法路由选择） =====
@@ -329,9 +357,10 @@ export const imageGenRouter = createRouter({
         const seed = `${r.skuName}-${config.category}-${algoType}-${r.retryCount}`;
         const scores = generateScore(seed, algoType);
 
-        // 分配预设图片
-        const imgIndex = (i + r.retryCount + algoId) % PRESET_IMAGES.length;
-        const generatedImage = PRESET_IMAGES[imgIndex];
+        // 分配预设图片（按品类+场景选择正确图片池）
+        const pool = getPresetImages(config.category || "3c", config.sceneType || "white");
+        const imgIndex = (i + r.retryCount + algoId) % pool.length;
+        const generatedImage = pool[imgIndex];
 
         // 如果是并行模式，模拟"多个算法同时生成择优"的效果
         let bestScore = scores.total;
@@ -346,7 +375,8 @@ export const imageGenRouter = createRouter({
             const altScores = generateScore(altSeed, route[j].type);
             if (altScores.total > bestScore) {
               bestScore = altScores.total;
-              bestImage = PRESET_IMAGES[(i + j) % PRESET_IMAGES.length];
+              const altPool = getPresetImages(config.category || "3c", config.sceneType || "white");
+              bestImage = altPool[(i + j) % altPool.length];
               bestAlgoId = route[j].id;
               bestAlgoName = route[j].name;
             }
@@ -468,8 +498,9 @@ export const imageGenRouter = createRouter({
       const seed = `${current.skuName}-${config.category}-${algoType}-${Date.now()}`;
       const scores = generateScore(seed, algoType);
 
-      const imgIndex = (input.resultId + newRetryCount + (primaryAlgo?.algo.id || 0)) % PRESET_IMAGES.length;
-      const generatedImage = PRESET_IMAGES[imgIndex];
+      const pool = getPresetImages(config.category || "3c", config.sceneType || "white");
+      const imgIndex = (input.resultId + newRetryCount + (primaryAlgo?.algo.id || 0)) % pool.length;
+      const generatedImage = pool[imgIndex];
 
       await db
         .update(generationResults)

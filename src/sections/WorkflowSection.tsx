@@ -885,14 +885,44 @@ export default function WorkflowSection() {
               </div>
 
               <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
-                <button className="flex items-center gap-2 px-6 py-3 bg-[#131415] text-white rounded font-medium hover:bg-[#333] transition-colors">
-                  <Download size={16} />
-                  批量下载全部
-                </button>
-                <button className="flex items-center gap-2 px-6 py-3 border border-[#DDDDDD] rounded font-medium hover:border-[#FF003C] hover:text-[#FF003C] transition-colors">
+                {/* 批量下载：为每张合格图片生成下载链接 */}
+                <div className="flex flex-wrap justify-center gap-2">
+                  {results.filter((r: any) => r.status === 'PASS').map((r: any) => (
+                    <a
+                      key={r.id}
+                      href={r.generatedImage}
+                      download={`${r.skuName}_主图_${r.totalScore}分.jpg`}
+                      className="flex items-center gap-2 px-4 py-2 bg-[#131415] text-white rounded font-medium hover:bg-[#333] transition-colors text-sm"
+                    >
+                      <Download size={14} />
+                      下载 {r.skuName}
+                    </a>
+                  ))}
+                </div>
+                {/* 上架按钮：跳转对应平台卖家后台 */}
+                <a
+                  href={
+                    config.platform === 'taobao' ? 'https://sell.taobao.com' :
+                    config.platform === 'jd' ? 'https://shop.jd.com' :
+                    config.platform === 'amazon' ? 'https://sellercentral.amazon.com' :
+                    config.platform === 'douyin' ? 'https://fxg.jinritemai.com' :
+                    '#'
+                  }
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-2 px-6 py-3 border border-[#DDDDDD] rounded font-medium hover:border-[#FF003C] hover:text-[#FF003C] transition-colors"
+                >
                   <ShoppingBag size={16} />
-                  一键上架到{PLATFORMS.find(p => p.id === config.platform)?.name}
-                </button>
+                  前往{PLATFORMS.find(p => p.id === config.platform)?.name}卖家后台
+                </a>
+              </div>
+
+              <div className="mt-4 p-4 bg-[#FFF0F3] border border-[#FF003C]/20 rounded">
+                <p className="text-xs text-[#FF003C]">
+                  <AlertTriangle size={12} className="inline mr-1" />
+                  演示版本：下载为原图链接直接保存，上架需前往平台后台手动上传。
+                  生产环境将集成平台API实现自动上架。
+                </p>
               </div>
 
               <div className="mt-6 pt-6 border-t border-[#DDDDDD]">
