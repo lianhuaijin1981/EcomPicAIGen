@@ -24,6 +24,13 @@ declare module "sharp" {
   interface ModulateOptions {
     brightness?: number;
     saturation?: number;
+    contrast?: number;
+  }
+
+  interface TintOptions {
+    r: number;
+    g: number;
+    b: number;
   }
 
   interface SharpenOptions {
@@ -57,6 +64,8 @@ declare module "sharp" {
     resize(width: number, height?: number | null, options?: ResizeOptions): Sharp;
     modulate(options: ModulateOptions): Sharp;
     gamma(gamma: number): Sharp;
+    tint(options: TintOptions): Sharp;
+    linear(a: number, b?: number): Sharp;
     normalise(): Sharp;
     sharpen(options?: SharpenOptions): Sharp;
     blur(sigma?: number): Sharp;

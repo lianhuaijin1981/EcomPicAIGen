@@ -3,7 +3,11 @@ import { createRouter, publicQuery } from "../middleware";
 import { getDb } from "../queries/connection";
 import { generationTasks, generationResults } from "@db/schema";
 import { eq } from "drizzle-orm";
-import { generateImage, saveGeneratedImage } from "../services/imageEngine";
+
+// ========== 新架构：AI生图层 + 后处理层 ==========
+import { selectGenerator } from "../services/aiGeneration";
+import { postProcessAndSave } from "../services/postProcessing";
+import { getTargetDimensions } from "../services/postProcessing/core";
 
 // ============================
 // 算法策略定义（Prompt + 评分用）
@@ -88,7 +92,7 @@ function matchStrategies(category: string, sceneType: string, mode: "single" | "
     let score = 0;
     const reasons: string[] = [];
 
-    // 品类匹配（宽泛匹配：3c匹配通用、家电匹配controlnet等）
+    // 品类匹配
     if (algo.id === "flux-general" || algo.id === "upscaler-hd") {
       score += 30;
       reasons.push("通用适配");
@@ -206,7 +210,7 @@ export const imageGenRouter = createRouter({
       return { taskId: task.id, total: input.files.length, algorithms: route };
     }),
 
-  // 执行生图（真实图像处理引擎）
+  // 执行生图（新架构：AI生图引擎 → 后处理引擎 → 评分）
   generate: publicQuery
     .input(z.object({ taskId: z.number() }))
     .mutation(async ({ input }) => {
@@ -225,6 +229,12 @@ export const imageGenRouter = createRouter({
       let totalScore = 0;
       let passCount = 0;
 
+      // ========== Step 1: 选择AI生图引擎 ==========
+      // 单图模式 → FLUX（高质量）；并行模式 → Z-Image（高速度）
+      const qualityTier = task.algorithmMode === "parallel" ? "standard" : "premium";
+      const speedPriority = task.algorithmMode === "parallel";
+      const generator = selectGenerator(qualityTier, speedPriority);
+
       for (let i = 0; i < results.length; i++) {
         const r = results[i];
         const sourceFile = sourceImages.find((f) => f.name === r.skuName);
@@ -234,32 +244,47 @@ export const imageGenRouter = createRouter({
           throw new Error(`Missing source image for ${r.skuName}`);
         }
 
-        // 确定算法
+        // 确定算法策略
         let bestAlgo = route[0];
         let bestAlgoName = bestAlgo?.name || "默认";
-
-        // 评分
         const finalAlgo = STRATEGIES.find((a) => a.id === bestAlgo?.id);
         const weights = finalAlgo?.scoreWeights || { decision: 0, info: 0, trust: 0, visual: 0 };
-        const seed = `${r.skuName}-${config.category}-${bestAlgo?.id || "default"}-${r.retryCount}`;
-        const scores = generateScore(seed, weights, fileSize);
 
-        // ====== 调用真实图像处理引擎 ======
-        const processedBuffer = await generateImage(sourceFile.preview, {
+        // ========== Step 2: AI生图引擎 ==========
+        const basePrompt = finalAlgo
+          ? finalAlgo.buildPrompt(r.skuName, CATEGORY_LABELS[config.category] || "product", SCENE_LABELS[config.sceneType] || "studio")
+          : `Product photo of ${r.skuName}`;
+        const enhancedPrompt = generator.enhancePrompt(basePrompt, config.category, config.sceneType);
+
+        const targetDim = getTargetDimensions(config.ratio || "1:1");
+        const aiResult = await generator.generate({
+          prompt: enhancedPrompt,
+          sourceImage: sourceFile.preview,
+          width: targetDim.width,
+          height: targetDim.height,
+          steps: generator.defaultSteps,
+        });
+
+        // ========== Step 3: 后处理引擎 ==========
+        const filename = `task_${input.taskId}_sku_${i}.jpg`;
+        const generatedUrl = await postProcessAndSave(aiResult.buffer, {
           sceneType: config.sceneType || "white",
           ratio: config.ratio || "1:1",
           colorTone: config.colorTone || "cool",
           lightMode: config.lightMode || "soft",
           category: config.category || "3c",
-        });
+        }, filename);
 
-        // 保存生成的图片文件
-        const filename = `task_${input.taskId}_sku_${i}.jpg`;
-        const generatedUrl = saveGeneratedImage(processedBuffer, filename);
+        // ========== Step 4: 评分 ==========
+        const seed = `${r.skuName}-${config.category}-${bestAlgo?.id || "default"}-${r.retryCount}`;
+        const scores = generateScore(seed, weights, fileSize);
+
+        // 组合显示名称：策略名 + 模型名 + 推理时间
+        const displayName = `${bestAlgoName} [${generator.modelName} · ${aiResult.inferenceTime}ms]`;
 
         await db.update(generationResults).set({
           generatedImage: generatedUrl,
-          algorithmName: bestAlgoName,
+          algorithmName: displayName,
           decisionScore: scores.decision,
           infoScore: scores.info,
           trustScore: scores.trust,
@@ -273,7 +298,7 @@ export const imageGenRouter = createRouter({
         totalScore += scores.total;
         if (scores.status === "PASS") passCount++;
 
-        // 模拟处理延迟（真实引擎本身已经耗时，这里减少额外延迟）
+        // 短暂延迟避免阻塞
         await new Promise((resolve) => setTimeout(resolve, 300));
       }
 
@@ -309,28 +334,45 @@ export const imageGenRouter = createRouter({
     const matched = matchStrategies(config.category || "3c", config.sceneType || "white", "single");
     const primary = matched[0]?.algo;
 
-    // 重新调用引擎
+    // 重新生成：默认用 FLUX 高质量模式
+    const generator = selectGenerator("premium", false);
+
     const sourceFile = (task?.sourceImages as any[] || []).find((f: any) => f.name === current.skuName);
     let generatedUrl = current.generatedImage;
 
     if (sourceFile?.preview) {
-      const processedBuffer = await generateImage(sourceFile.preview, {
+      const basePrompt = primary
+        ? primary.buildPrompt(current.skuName, CATEGORY_LABELS[config.category] || "product", SCENE_LABELS[config.sceneType] || "studio")
+        : `Product photo of ${current.skuName}`;
+      const enhancedPrompt = generator.enhancePrompt(basePrompt, config.category, config.sceneType);
+
+      const targetDim = getTargetDimensions(config.ratio || "1:1");
+      const aiResult = await generator.generate({
+        prompt: enhancedPrompt,
+        sourceImage: sourceFile.preview,
+        width: targetDim.width,
+        height: targetDim.height,
+        steps: generator.defaultSteps,
+      });
+
+      const filename = `task_${current.taskId}_sku_${input.resultId}_retry_${newRetryCount}.jpg`;
+      generatedUrl = await postProcessAndSave(aiResult.buffer, {
         sceneType: config.sceneType || "white",
         ratio: config.ratio || "1:1",
         colorTone: config.colorTone || "cool",
         lightMode: config.lightMode || "soft",
         category: config.category || "3c",
-      });
-      const filename = `task_${current.taskId}_sku_${input.resultId}_retry_${newRetryCount}.jpg`;
-      generatedUrl = saveGeneratedImage(processedBuffer, filename);
+      }, filename);
     }
 
     const seed = `${current.skuName}-${config.category}-${primary?.id || "default"}-${Date.now()}`;
     const scores = generateScore(seed, primary?.scoreWeights || { decision: 0, info: 0, trust: 0, visual: 0 }, 0);
 
+    const displayName = `${primary?.name || "默认"} [${generator.modelName} · 重试${newRetryCount}]`;
+
     await db.update(generationResults).set({
       generatedImage: generatedUrl,
-      algorithmName: primary?.name || "默认",
+      algorithmName: displayName,
       decisionScore: scores.decision,
       infoScore: scores.info,
       trustScore: scores.trust,
