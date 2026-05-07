@@ -12,7 +12,11 @@ import CapabilitiesSection from '@/sections/CapabilitiesSection';
 import VisualShowcaseSection from '@/sections/VisualShowcaseSection';
 import CoverageSection from '@/sections/CoverageSection';
 import ScoringSection from '@/sections/ScoringSection';
+import PricingSection from '@/sections/PricingSection';
 import AlgorithmManagerSection from '@/sections/AlgorithmManagerSection';
+import AuthPage from '@/pages/AuthPage';
+import HistoryPage from '@/pages/HistoryPage';
+import ExportPage from '@/pages/ExportPage';
 
 gsap.registerPlugin(ScrollTrigger);
 
@@ -25,6 +29,7 @@ function HomePage() {
       <VisualShowcaseSection />
       <CoverageSection />
       <ScoringSection />
+      <PricingSection />
     </>
   );
 }
@@ -57,6 +62,9 @@ function App() {
         <Routes>
           <Route path="/" element={<HomePage />} />
           <Route path="/algorithms" element={<AlgorithmManagerSection />} />
+          <Route path="/auth" element={<AuthPage />} />
+          <Route path="/history" element={<HistoryPage />} />
+          <Route path="/export" element={<ExportPage />} />
         </Routes>
       </main>
       <Footer />

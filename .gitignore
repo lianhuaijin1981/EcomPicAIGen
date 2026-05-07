@@ -7,12 +7,13 @@ node_modules
 dist
 build
 
-# Environment variables
+# Environment variables (keep local secrets safe)
 .env
 .env.local
 .env.development.local
 .env.test.local
 .env.production.local
+.env.*.local
 
 # IDE
 .vscode
@@ -32,6 +33,9 @@ yarn-error.log*
 
 # Testing
 coverage
+
+# Generated images (local dev)
+public/generated/
 
 # Misc
 *.tgz
