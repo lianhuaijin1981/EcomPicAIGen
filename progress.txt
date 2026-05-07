@@ -10,7 +10,77 @@
 
 ---
 
-## Phase 8: 生产级功能补充 ✅ (2026-05-07)
+## Phase 9: 运营页面 + SEO + 部署配置 ✅ (2026-05-07 22:50 GMT+8)
+
+### 9.1 新增前端页面
+| 路由 | 组件 | 功能 |
+|------|------|------|
+| `/auth` | `pages/AuthPage.tsx` | 登录/注册表单，含验证 |
+| `/history` | `pages/HistoryPage.tsx` | 任务历史列表 + 统计 + 分页 + 删除 |
+| `/export` | `pages/ExportPage.tsx` | 批量ZIP导出（JSZip浏览器端打包）|
+| `#pricing` | `sections/PricingSection.tsx` | 定价方案展示（免费/专业/企业）|
+
+### 9.2 新增后端 API
+| 端点 | 文件 | 功能 |
+|------|------|------|
+| `history.listTasks` | `routers/history.ts` | 分页查询任务列表（需认证）|
+| `history.stats` | `routers/history.ts` | 任务统计（总数/图数/合格数/均分）|
+| `history.deleteTask` | `routers/history.ts` | 删除任务 |
+| `export.getExportList` | `routers/export.ts` | 获取导出列表（需认证）|
+| `export.batchExport` | `routers/export.ts` | 批量导出配置 |
+
+### 9.3 前端交互完善
+- **Navigation**: 登录状态感知，已登录显示积分余额，未登录显示登录链接
+- **GradientButton**: 新增 `variant=default`/`disabled` 支持
+- **Footer**: 真实超链接 + 动态年份 + GitHub 链接
+- **App.tsx**: 新增 `/auth` `/history` `/export` 路由
+
+### 9.4 SEO 优化
+- `index.html`: 完整 meta keywords + Open Graph + Twitter Card
+- `public/robots.txt`: 允许爬虫
+- `public/sitemap.xml`: 所有页面 sitemap
+
+### 9.5 部署配置
+- `vercel.json`: Vercel 适配器配置
+- `CHANGELOG.md`: 版本变更记录（v0.1~v0.3）
+- `.gitignore`: 补充 `public/generated/` 本地生成图
+- `package.json`: 包名从 `my-app` 改为 `EcomPicAIGen`，新增 `jszip` 依赖
+
+### 9.6 Phase 9 新增文件清单
+```
+新增：
+- api/routers/history.ts    (任务历史 API)
+- api/routers/export.ts     (批量导出 API)
+- src/pages/AuthPage.tsx   (登录注册)
+- src/pages/HistoryPage.tsx (历史记录)
+- src/pages/ExportPage.tsx (批量ZIP导出)
+- src/sections/PricingSection.tsx (定价页)
+- src/lib/config.ts         (站点配置)
+- public/robots.txt        (SEO)
+- public/sitemap.xml      (SEO)
+- CHANGELOG.md             (变更日志)
+- vercel.json             (部署适配)
+
+修改：
+- src/App.tsx             (新增路由)
+- src/components/Navigation.tsx (登录状态)
+- src/components/Footer.tsx (真实链接)
+- src/components/GradientButton.tsx (新增props)
+- index.html              (SEO meta)
+- api/router.ts           (注册新router)
+- package.json           (包名+依赖)
+- .gitignore             (补充目录)
+```
+
+### 版本里程碑更新
+| 版本 | 日期 | 完成度 | 描述 |
+|------|------|--------|------|
+| v0.1 | 2026-05-05 | 40% | 基础架构 + 前端UI |
+| v0.2 | 2026-05-05 | 55% | 5步工作流 + 算法路由 |
+| v0.3 | 2026-05-07 | 75% | 认证 + 计费 + CI/CD |
+| **v0.4** | **2026-05-07** | **90%** | **运营页面 + SEO + 导出 + 定价** |
+
+
 
 ### 8.1 文档与合规
 | 文件 | 变更内容 |
