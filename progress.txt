@@ -1,8 +1,211 @@
 # EcomPicAIGen 开发进展
-# 更新日期: 2026-05-05
-# GitHub: lianhuaijin1981
+# GitHub: lianhuaijin1981/EcomPicAIGen
+# 创建日期: 2026-05-05
+# 最后更新: 2026-05-07 22:16 GMT+8
 
-## 当前完成度
+---
+
+## Phase 1-7 基础版本 ✅ (2026-05-05)
+详见下方历史记录
+
+---
+
+## Phase 8: 生产级功能补充 ✅ (2026-05-07)
+
+### 8.1 文档与合规
+| 文件 | 变更内容 |
+|------|----------|
+| `README.md` | 完全重写：产品介绍、技术架构、快速开始、API文档、路线图 |
+| `LICENSE` | 新增 Apache License 2.0 |
+
+### 8.2 用户认证体系
+| 文件 | 功能 |
+|------|------|
+| `api/routers/auth.ts` | 用户注册/登录/JWT签发/PBKDF2哈希/timing-safe验证 |
+| `api/middleware.ts` | 新增 `protectedProcedure`，需登录才能调用 |
+| `api/boot.ts` | JWT中间件注入userId到请求上下文 |
+| `api/context.ts` | userId从boot.ts传入tRPC context |
+| `db/schema.ts` | 新增 `users` + `userSessions` 表 |
+
+**安全特性**：
+- PBKDF2 密码哈希（防止彩虹表攻击）
+- timingSafeEqual 验证（防止侧信道攻击）
+- JWT有效期 7天，支持会话管理
+
+### 8.3 计费系统
+| 文件 | 功能 |
+|------|------|
+| `api/routers/billing.ts` | 积分查询/消费记录/扣除/失败退还 |
+| `db/schema.ts` | 新增 `billingRecords` 表 |
+
+**积分规则**：
+```
+单算法模式: 5 积分/张
+并行择优:   12 积分/张（3倍算力）
+自适应:     8 积分/张
+
+算法加成：
+- 超分精修: 2.0倍
+- ControlNet: 1.5倍
+- IPAdapter: 1.5倍
+- LoRA: 1.3倍
+- 合规净化: 0.5倍
+```
+
+### 8.4 错误处理基础设施
+| 文件 | 功能 |
+|------|------|
+| `api/middleware/errorHandler.ts` | AppError类 + 14种标准错误码 |
+
+**错误码体系**：
+```
+通用：INTERNAL_ERROR, NOT_FOUND, VALIDATION_ERROR, 
+      UNAUTHORIZED, FORBIDDEN, RATE_LIMITED
+
+业务：TASK_NOT_FOUND, RESULT_NOT_FOUND, ALGORITHM_NOT_FOUND,
+      SOURCE_IMAGE_MISSING, AI_GENERATION_FAILED, 
+      POSTPROCESSING_FAILED, DATABASE_ERROR,
+      INVALID_FILE_TYPE, FILE_TOO_LARGE, QUOTA_EXCEEDED
+```
+
+### 8.5 速率限制
+| 文件 | 功能 |
+|------|------|
+| `api/middleware/rateLimit.ts` | 60次/分钟，内存存储（生产建议Redis） |
+
+### 8.6 单元测试
+| 文件 | 覆盖范围 |
+|------|----------|
+| `api/__tests__/imageGen.test.ts` | 算法路由匹配、STRATEGIES常量 |
+| `api/__tests__/billing.test.ts` | 密码哈希、JWT、积分计算 |
+| `api/__tests__/errorHandler.test.ts` | AppError构造 |
+
+### 8.7 CI/CD 流水线
+| 文件 | 功能 |
+|------|------|
+| `.github/workflows/ci.yml` | GitHub Actions：lint → test → build → docker push |
+
+**流水线阶段**：
+1. Lint & Type Check
+2. Unit Tests（含覆盖率报告）
+3. Build
+4. Docker Build & Push（仅main分支）
+
+### 8.8 Docker优化
+| 文件 | 变更 |
+|------|------|
+| `Dockerfile` | 多阶段构建 + sharp依赖安装 + 非 root 用户运行 |
+
+### 8.9 环境配置
+| 文件 | 变更 |
+|------|------|
+| `.env.example` | 新增 JWT_SECRET / AI_API_KEYS / RATE_LIMIT 配置说明 |
+| `vitest.config.ts` | 完善测试配置，支持覆盖率报告 |
+
+---
+
+## 新增 API 端点
+
+### 认证 API (`/api/trpc/auth`)
+```
+POST /register   - 用户注册（邮箱+密码）
+POST /login      - 登录（返回JWT cookie）
+POST /logout     - 登出（清除cookie）
+GET  /me         - 获取当前用户信息
+```
+
+### 计费 API (`/api/trpc/billing`)
+```
+GET  /getCredits - 查询积分余额
+GET  /history    - 消费记录（分页）
+POST /deductCredits - 扣除积分（内部）
+POST /refundCredits  - 退还积分（内部）
+```
+
+---
+
+## 数据库新增表
+
+### users 表
+```sql
+CREATE TABLE users (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  email TEXT NOT NULL UNIQUE,
+  password_hash TEXT NOT NULL,
+  password_salt TEXT NOT NULL,
+  nickname TEXT,
+  credits INTEGER NOT NULL DEFAULT 0,
+  role TEXT NOT NULL DEFAULT 'user',
+  created_at TIMESTAMP,
+  updated_at TIMESTAMP
+);
+```
+
+### user_sessions 表
+```sql
+CREATE TABLE user_sessions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER REFERENCES users(id),
+  token_hash TEXT NOT NULL,
+  ip_address TEXT,
+  user_agent TEXT,
+  expires_at TIMESTAMP NOT NULL,
+  created_at TIMESTAMP
+);
+```
+
+### billing_records 表
+```sql
+CREATE TABLE billing_records (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER REFERENCES users(id),
+  task_id INTEGER REFERENCES generation_tasks(id),
+  credits_change INTEGER NOT NULL,
+  remaining_credits INTEGER NOT NULL,
+  description TEXT,
+  created_at TIMESTAMP
+);
+```
+
+---
+
+## 文件结构变化
+
+```
+新增文件：
+├── .github/workflows/ci.yml      # CI/CD流水线
+├── LICENSE                        # Apache 2.0
+├── api/routers/auth.ts            # 用户认证
+├── api/routers/billing.ts         # 计费系统
+├── api/middleware/errorHandler.ts # 错误处理
+├── api/middleware/rateLimit.ts   # 速率限制
+└── api/__tests__/*.ts             # 单元测试
+
+修改文件：
+├── README.md           # 重写
+├── .env.example        # 补充环境变量
+├── Dockerfile          # 多阶段构建
+├── api/boot.ts         # 接入中间件
+├── api/context.ts      # userId注入
+├── api/middleware.ts   # protectedProcedure
+├── api/router.ts       # 注册新router
+├── db/schema.ts        # 新增3张表
+└── vitest.config.ts    # 测试配置
+```
+
+---
+
+## 版本里程碑
+
+| 版本 | 日期 | 完成度 | 描述 |
+|------|------|--------|------|
+| v0.1 | 2026-05-05 | 40% | 基础架构 + 前端UI |
+| v0.2 | 2026-05-05 | 55% | 5步工作流 + 算法路由 |
+| v0.3 | 2026-05-07 | 75% | 认证 + 计费 + CI/CD + 测试 |
+
+---
+
+## 历史记录
 
 ### Phase 1: 设计阶段 ✅
 - 读取PRD并理解完整需求
@@ -33,74 +236,27 @@
 - Prompt工程系统 + 质量评分算法
 - 数据库：generation_tasks + generation_results
 
-### Phase 7: 多算法路由调度系统 ✅ （新增！）
-- **算法库表**（algorithms）：7种差异化算法（通用/保真/ControlNet/LoRA/超分/合规）
-- **算法路由引擎**（matchAlgorithms）：按品类+用途+风格自动匹配，评分排序
-- **三种调度模式**：
-  - 单算法模式：自动选最优算法
-  - 并行择优模式：3种算法同时生成，自动选最高分
-  - 自适应模式：先单算法，低于85分自动补充
-- **差异化Prompt工程**：不同算法类型（product_fidelity/controlnet/lora/upscaler/compliance）追加专属指令
-- **差异化评分算法**：不同算法类型在不同维度有天然优势/劣势加权
-- **算法管理页面**（/algorithms）：算法库列表、路由匹配测试、种子数据初始化
-- **前端集成**：参数配置面板新增算法模式选择、质量校验展示算法信息
+### Phase 7: 多算法路由调度系统 ✅
+- 算法库表（algorithms）：7种差异化算法
+- 算法路由引擎（matchAlgorithms）
+- 三种调度模式：单算法/并行择优/自适应
+- 差异化Prompt工程
+- 算法管理页面（/algorithms）
 
-## 核心架构图
+---
 
-```
-用户上传素材 → 参数配置（品类/场景/色调/光影/比例/平台/算法模式）
-                              ↓
-                    后端算法路由引擎（matchAlgorithms）
-                              ↓
-              ┌───────────────┼───────────────┐
-              ↓               ↓               ↓
-         单算法模式      并行择优模式      自适应模式
-              ↓               ↓               ↓
-         匹配1个算法    匹配3个不同算法   先1个，低分再补
-              ↓               ↓               ↓
-         Prompt工程      Prompt工程×3     Prompt工程×N
-              ↓               ↓               ↓
-         AI生图API       AI生图API×3     AI生图API
-              ↓               ↓               ↓
-         质量评分         择优选最高分     自动重试
-              ↓               ↓               ↓
-         数据库存储 ←──── 数据库存储 ←── 数据库存储
-              ↓               ↓               ↓
-         前端展示 ←──── 前端展示 ←── 前端展示
-```
+## 下一步迭代计划
 
-## 算法路由匹配规则（优先级排序）
+### 待实现功能
+- [ ] 真实AI API接入（Replicate/通义万相）
+- [ ] BullMQ异步队列
+- [ ] 批量ZIP导出
+- [ ] Redis缓存层
+- [ ] 电商平台API对接
+- [ ] 前端登录UI
+- [ ] 任务历史页面
+- [ ] 运营数据看板
 
-1. 品类匹配（+40分）
-2. 用途匹配（+30分）
-3. 风格匹配（+20分）
-4. 算法优先级（+0~10分，priority越小加分越多）
-5. 历史成功率加权（+0~20分）
+---
 
-## 7种内置算法
-
-| 算法 | 类型 | 适配品类 | 核心能力 | 优先级 |
-|------|------|----------|----------|--------|
-| Flux通用文生图 | general | 全部 | 创意海报、氛围图 | 50 |
-| IPAdapter商品保真 | product_fidelity | 3C/服饰/家居/美妆/家电 | 锁定主体形态不变 | 10 |
-| ControlNet结构约束 | controlnet | 3C/家电 | 固定视角/构图/透视 | 15 |
-| 鞋服LoRA领域模型 | lora | 服饰鞋包 | 皮革/面料/金属材质纹理 | 5 |
-| 美妆LoRA领域模型 | lora | 美妆个护 | 瓶罐通透/光影细腻 | 5 |
-| 超分精修增强 | upscaler | 全部 | 4K超分/锐化/细节补全 | 100 |
-| 合规净化算法 | compliance | 全部 | 去水印/去文字/去杂物 | 200 |
-
-## 生产接入路线
-
-1. **接入真实AI生图API**：替换 `imageGen.ts` generate mutation 中的模拟逻辑
-2. **接入GPT-4V图像理解**：提取Figma设计稿/原始图片的产品特征
-3. **接入ControlNet/IPAdapter**：保持产品形态一致性
-4. **多算法并行优化**：使用队列系统（Bull/BullMQ）实现真正的并行生成
-5. **算法效果A/B测试**：通过 avgScore/successRate 字段持续优化路由匹配
-
-## 下一步（待实现）
-- OAuth用户认证
-- 批量下载ZIP导出
-- 电商平台API对接
-- 真实AI生图API接入（Replicate/Leonardo/通义万相）
-- 队列系统优化（BullMQ）
-- 算法效果A/B测试平台
+*本文件用于著作权申请记录，每次迭代请更新日期和详细变更内容。*

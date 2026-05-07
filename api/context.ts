@@ -1,12 +1,19 @@
+import { fetchRequestHandler } from "@trpc/server/adapters/fetch";
 import type { FetchCreateContextFnOptions } from "@trpc/server/adapters/fetch";
 
-export type TrpcContext = {
-  req: Request;
-  resHeaders: Headers;
-};
+/**
+ * tRPC Context 类型
+ */
+export interface TrpcContext {
+  userId?: number;
+}
 
-export async function createContext(
-  opts: FetchCreateContextFnOptions,
-): Promise<TrpcContext> {
-  return { req: opts.req, resHeaders: opts.resHeaders };
+/**
+ * 创建 tRPC 上下文
+ * userId 由 boot.ts JWT 中间件注入到请求中
+ */
+export function createContext(opts: FetchCreateContextFnOptions & { userId?: number }): TrpcContext {
+  return {
+    userId: opts.userId,
+  };
 }

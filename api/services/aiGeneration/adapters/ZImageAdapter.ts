@@ -1,9 +1,9 @@
 /**
  * Z-Image-Turbo 适配器
- * 
+ *
  * 仓库：https://github.com/Tongyi-MAI/Z-Image
  * 定位：高速度生图（扩散步数 4-8，单张 2-5 秒）
- * 
+ *
  * 生产环境接入方式：
  * 1. 通义万相 API（阿里云 DashScope）
  * 2. 本地部署：Z-Image-Turbo diffusers pipeline
@@ -19,20 +19,23 @@ export class ZImageAdapter extends BaseAIGenerator {
   readonly type = "z-image";
   readonly defaultSteps = 4; // Turbo 特性：4步即可出图
 
-  // 生产环境配置注释（启用真实API时取消注释并填入密钥）
-  // private apiEndpoint: string = process.env.ZIMAGE_API_ENDPOINT || "https://dashscope.aliyuncs.com/api/v1/services/aigc/image-generation/generation";
-  // private apiKey: string = process.env.ZIMAGE_API_KEY || "";
+  // ── 生产环境配置（取消注释并配置环境变量即可启用）─────────────
+  // private readonly apiEndpoint = process.env.ZIMAGE_API_ENDPOINT
+  //   ?? "https://dashscope.aliyuncs.com/api/v1/services/aigc/image-generation/generation";
+  // private readonly apiKey = process.env.ZIMAGE_API_KEY ?? "";
+  // ──────────────────────────────────────────────────────────────────
 
   constructor() {
     super();
   }
 
   /**
-   * 生产环境真实实现（需取消注释并配置阿里云 DashScope）：
-   * 
+   * 生产环境真实实现（取消上方注释并启用此方法）：
+   *
    * async generate(params: AIGenerationParams): Promise<AIGenerationResult> {
    *   const startTime = Date.now();
-   *   
+   *   const seed = params.seed || Math.floor(Math.random() * 1000000);
+   *
    *   const response = await fetch(this.apiEndpoint, {
    *     method: "POST",
    *     headers: {
@@ -40,29 +43,37 @@ export class ZImageAdapter extends BaseAIGenerator {
    *       "Content-Type": "application/json",
    *     },
    *     body: JSON.stringify({
-   *       model: "wanx2.1-t2i-turbo", // 或 wanx2.1-t2i-plus
+   *       model: "wanx2.1-t2i-turbo",
    *       input: {
    *         prompt: params.prompt,
-   *         negative_prompt: "text, watermark, logo, blurry, low quality",
-   *         ref_image: params.sourceImage, // 参考图
+   *         negative_prompt: "text, watermark, logo, blurry, low quality, deformed",
+   *         ref_image: params.sourceImage,
    *         size: `${params.width || 1024}x${params.height || 1024}`,
    *         n: 1,
    *       },
-   *       parameters: {
-   *         seed: params.seed || Math.floor(Math.random() * 1000000),
-   *       },
+   *       parameters: { seed },
    *     }),
    *   });
-   *   
+   *
+   *   if (!response.ok) {
+   *     const err = await response.text();
+   *     throw new Error(`Z-Image API error: ${response.status} ${err}`);
+   *   }
+   *
    *   const result = await response.json();
    *   const imageUrl = result.output?.results?.[0]?.url;
+   *
+   *   if (!imageUrl) {
+   *     throw new Error("Z-Image API did not return image URL");
+   *   }
+   *
    *   const imageResponse = await fetch(imageUrl);
    *   const buffer = Buffer.from(await imageResponse.arrayBuffer());
-   *   
+   *
    *   return {
    *     buffer,
    *     model: this.modelName,
-   *     seed: params.seed || 0,
+   *     seed,
    *     inferenceTime: Date.now() - startTime,
    *   };
    * }
@@ -87,12 +98,9 @@ export class ZImageAdapter extends BaseAIGenerator {
 
     // Turbo 风格：更高对比度，更饱和
     const processed = await sharp(sourceBuffer)
-      .modulate({
-        brightness: 1.02,
-        saturation: 1.08, // Turbo 更鲜艳
-      })
-      .linear(1.05, 0) // Turbo 对比度增强
-      .sharpen({ sigma: 1.0 }) // Turbo 默认锐化
+      .modulate({ brightness: 1.02, saturation: 1.08 })
+      .linear(1.05, 0)
+      .sharpen({ sigma: 1.0 })
       .jpeg({ quality: 92 })
       .toBuffer();
 

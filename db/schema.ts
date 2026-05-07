@@ -1,12 +1,46 @@
 import { sqliteTable, integer, text } from "drizzle-orm/sqlite-core";
 
+// =================== 用户表 ===================
+export const users = sqliteTable("users", {
+  id: integer("id", { mode: "number" }).primaryKey({ autoIncrement: true }),
+  email: text("email").notNull().unique(),
+  passwordHash: text("password_hash").notNull(),
+  passwordSalt: text("password_salt").notNull(),
+  nickname: text("nickname"),
+  credits: integer("credits").notNull().default(0),
+  role: text("role").notNull().default("user"), // "user" | "admin"
+  createdAt: integer("created_at", { mode: "timestamp" }).$defaultFn(() => new Date()),
+  updatedAt: integer("updated_at", { mode: "timestamp" }).$defaultFn(() => new Date()),
+});
+
+// =================== 用户会话表 ===================
+export const userSessions = sqliteTable("user_sessions", {
+  id: integer("id", { mode: "number" }).primaryKey({ autoIncrement: true }),
+  userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  tokenHash: text("token_hash").notNull(),
+  ipAddress: text("ip_address"),
+  userAgent: text("user_agent"),
+  expiresAt: integer("expires_at", { mode: "timestamp" }).notNull(),
+  createdAt: integer("created_at", { mode: "timestamp" }).$defaultFn(() => new Date()),
+});
+
+// =================== 计费记录表 ===================
+export const billingRecords = sqliteTable("billing_records", {
+  id: integer("id", { mode: "number" }).primaryKey({ autoIncrement: true }),
+  userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  taskId: integer("task_id").references(() => generationTasks.id),
+  creditsChange: integer("credits_change").notNull(),
+  remainingCredits: integer("remaining_credits").notNull(),
+  description: text("description"),
+  createdAt: integer("created_at", { mode: "timestamp" }).$defaultFn(() => new Date()),
+});
+
 // =================== 算法库管理表 ===================
 export const algorithms = sqliteTable("algorithms", {
   id: integer("id", { mode: "number" }).primaryKey({ autoIncrement: true }),
   name: text("name").notNull(),
   type: text("type").notNull(),
   description: text("description"),
-  // JSON 数组存储为文本
   categories: text("categories", { mode: "json" }).notNull().$default(() => []),
   scenes: text("scenes", { mode: "json" }).notNull().$default(() => []),
   styles: text("styles", { mode: "json" }).notNull().$default(() => []),
@@ -24,6 +58,7 @@ export const algorithms = sqliteTable("algorithms", {
 // =================== AI 主图生成任务表 ===================
 export const generationTasks = sqliteTable("generation_tasks", {
   id: integer("id", { mode: "number" }).primaryKey({ autoIncrement: true }),
+  userId: integer("user_id"),
   config: text("config", { mode: "json" }).notNull(),
   algorithmRoute: text("algorithm_route", { mode: "json" }),
   algorithmMode: text("algorithm_mode").notNull().default("single"),
